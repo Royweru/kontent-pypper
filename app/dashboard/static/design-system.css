@@ -1,0 +1,122 @@
+/**
+ * KontentPyper Design System
+ * =============================================================
+ * Aesthetic: Dark Charcoal with Lime-Chartreuse & Lavender accents
+ * Display:   Space Grotesk (structural, geometric)
+ * Data:      JetBrains Mono (terminals, numbers, live data)
+ * Dominant:  #111118  (dark charcoal)
+ * Primary:   #c8f951  (lime-chartreuse)
+ * Secondary: #8b7ec8  (soft lavender)
+ * =============================================================
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ── Reset & root tokens ──────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Core palette */
+  --deep:      #111118;
+  --base:      #16161f;
+  --surface:   #1c1c2a;
+  --surface2:  #232336;
+  --border:    rgba(200, 249, 81, 0.08);
+  --border-hi: rgba(200, 249, 81, 0.22);
+
+  /* Primary accent (lime-chartreuse) */
+  --accent:    #c8f951;
+  --accent-dim:#a8d63e;
+  --accent-glow: rgba(200, 249, 81, 0.10);
+
+  /* Secondary accent (lavender) */
+  --lavender:     #8b7ec8;
+  --lavender-dim: rgba(139, 126, 200, 0.15);
+
+  /* Amber (warnings) */
+  --amber:     #f59e0b;
+  --amber-dim: rgba(245,158,11,0.15);
+
+  /* Text */
+  --text:      #e8ecf2;
+  --text-muted:#8a8fa0;
+  --text-dim:  #4a4e62;
+
+  /* Status */
+  --success:   #c8f951;
+  --warning:   #f59e0b;
+  --danger:    #f87171;
+
+  /* Typography */
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Sizing */
+  --sidebar-w: 248px;
+  --topbar-h:  58px;
+  --radius:    10px;
+  --radius-sm: 6px;
+  --radius-lg: 16px;
+
+  /* Transitions */
+  --ease:      cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-display);
+  background: var(--deep);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Noise texture overlay (subtle grain) ─────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9000;
+  opacity: 0.4;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--surface2); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+
+/* ── Typography scale ─────────────────────────────────────── */
+h1 { font-size: 2rem;   font-weight: 700; letter-spacing: -0.02em; }
+h2 { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.01em; }
+h3 { font-size: 1rem;   font-weight: 600; }
+
+.mono { font-family: var(--font-mono); }
+.muted { color: var(--text-muted); }
+.accent-text { color: var(--accent); }
+
+/* ── Accent glow underline (the brand anchor element) ───── */
+.glow-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  position: relative;
+}
+.glow-label::after {
+  content: '';
+  display: block;
+  width: 24px; height: 1px;
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+/* ── Utility ─────────────────────────────────────────────── */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+.trunc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+

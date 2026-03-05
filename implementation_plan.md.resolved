@@ -1,0 +1,312 @@
+# Content Automation Pipeline — Implementation Plan
+
+A fully autonomous daily pipeline that discovers trending tech topics from Reddit and RSS feeds, generates 1 short-form video + 3 text-with-image posts using AI, publishes to X/LinkedIn/YouTube, and notifies via Telegram + email — all monitored through a live dashboard.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **API Keys Required**: You will need to create accounts and get API keys for:
+> - Reddit (PRAW app credentials) — free
+> - X/Twitter Developer API — free tier has read-only; **Basic tier ($100/mo)** needed for write access
+> - LinkedIn Developer App — free (OAuth 2.0 approval process)
+> - YouTube Data API v3 — free via Google Cloud Console
+> - Pexels API — free
+> - Google Gemini API — you already have this
+> - Telegram Bot Token (via @BotFather) — free
+
+> [!WARNING]
+> **X/Twitter API Write Access**: The free tier v2 API only allows read. Posting requires the **Basic** tier ($100/month) or finding an alternative service. We can start with the other platforms and add X later if needed.
+
+## Pipeline Data Flow
+
+```mermaid
+graph TD
+    A["⏰ Daily Trigger<br/>Windows Task Scheduler"] --> B["📡 Source Fetcher"]
+    B --> B1["Reddit PRAW<br/>r/artificial, r/MachineLearning..."]
+    B --> B2["RSS Feeds<br/>TechCrunch, HN, Verge..."]
+    B1 --> C["🧠 Topic Ranker<br/>Gemini API — pick top 4"]
+    B2 --> C
+    C --> D1["✍️ Text Generator<br/>3 posts w/ Gemini"]
+    C --> D2["🎬 Video Generator<br/>1 short w/ script"]
+    D1 --> E1["🖼️ Image Fetcher<br/>Pexels API"]
+    D2 --> F1["🗣️ TTS Narration<br/>edge-tts"]
+    D2 --> F2["🎥 Stock Footage<br/>Pexels Video API"]
+    F1 --> G["🎞️ Video Composer<br/>MoviePy + Captions"]
+    F2 --> G
+    E1 --> H["📤 Publishers"]
+    G --> H
+    H --> H1["𝕏 Twitter"]
+    H --> H2["💼 LinkedIn"]
+    H --> H3["▶️ YouTube Shorts"]
+    H --> I["📊 Dashboard DB<br/>SQLite"]
+    I --> J["🖥️ Web Dashboard<br/>FastAPI + Modern UI"]
+    H --> K["🔔 Notifications"]
+    K --> K1["📱 Telegram"]
+    K --> K2["📧 Email"]
+```
+
+## Daily Output
+
+| Content | Platforms | Details |
+|---|---|---|
+| **1 Video** (30–60s) | YouTube Shorts + X + LinkedIn | Pexels footage + TTS narration + burned captions, 9:16 vertical |
+| **3 Text Posts** | X + LinkedIn | AI-written casual+educational posts with Pexels images |
+
+---
+
+## Proposed Changes
+
+### Project Foundation
+
+#### [NEW] [requirements.txt](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/requirements.txt)
+```
+# Content Sources
+praw                   # Reddit API
+feedparser             # RSS feed parsing
+
+# AI Content Generation
+google-generativeai    # Gemini API
+edge-tts               # Microsoft neural TTS (free)
+
+# Media
+pexelsPy               # Pexels stock photos/videos
+moviepy                # Video editing/composition
+Pillow                 # Image processing
+
+# Social Media Publishers
+tweepy                 # X/Twitter API v2
+google-api-python-client  # YouTube Data API v3
+google-auth-oauthlib   # YouTube OAuth
+requests               # LinkedIn REST API
+
+# Notifications
+python-telegram-bot    # Telegram notifications
+aiosmtplib             # Async email
+
+# Dashboard
+fastapi                # Web dashboard backend
+uvicorn                # ASGI server
+jinja2                 # HTML templates
+aiofiles               # Async file serving
+
+# Utilities
+python-dotenv          # .env file loading
+aiosqlite              # Async SQLite
+schedule               # In-process scheduling fallback
+```
+
+#### [NEW] [.env](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/.env)
+Template for all API keys — user fills in values.
+
+#### [NEW] [config/settings.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/config/settings.py)
+Central configuration loading from `.env` — all API keys, feature flags, timing.
+
+#### [NEW] [config/sources.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/config/sources.py)
+Curated list of:
+- **Subreddits**: `r/artificial`, `r/MachineLearning`, `r/LocalLLaMA`, `r/programming`, `r/technology`, `r/webdev`, `r/devops`
+- **RSS Feeds**: TechCrunch AI, Hacker News, The Verge Tech, Ars Technica, MIT Tech Review, OpenAI Blog, Google AI Blog
+
+#### [NEW] [data/pipeline.db](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/data/pipeline.db)
+SQLite schema with tables: `pipeline_runs`, `generated_posts`, `published_posts`, `errors`
+
+---
+
+### Content Sources (Phase 2)
+
+#### [NEW] [pipeline/sources/reddit_scraper.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/pipeline/sources/reddit_scraper.py)
+- Uses PRAW to fetch top 10 hot posts from each configured subreddit
+- Extracts: title, score, url, subreddit, comment_count, created_utc
+- Deduplicates by URL and filters posts older than 24 hours
+- Returns standardized `TrendingTopic` dataclass list
+
+#### [NEW] [pipeline/sources/rss_fetcher.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/pipeline/sources/rss_fetcher.py)
+- Uses `feedparser` to parse all configured RSS feed URLs
+- Extracts: title, summary, link, published date
+- Filters to last 24 hours only
+- Returns same `TrendingTopic` dataclass format
+
+---
+
+### AI Content Generation (Phase 3)
+
+#### [NEW] [pipeline/content/topic_selector.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/pipeline/content/topic_selector.py)
+- Takes all trending topics from sources
+- Sends to Gemini API with prompt: "Rank these by virality potential for a tech audience. Pick the top 4: 1 for a video, 3 for text posts. Avoid duplicates."
+- Returns `SelectedTopics` with `video_topic` and `text_topics`
+
+#### [NEW] [pipeline/content/text_generator.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/pipeline/content/text_generator.py)
+- Takes a topic, generates platform-optimized text
+- X post: 280 chars max, punchy, with hashtags
+- LinkedIn post: 1300 chars, professional but casual, with hook + insight + CTA
+- Uses Gemini API with tone prompt: casual + educational
+
+#### [NEW] [pipeline/content/image_fetcher.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/pipeline/content/image_fetcher.py)
+- Takes topic keywords, searches Pexels Photos API
+- Downloads best matching landscape image
+- Resizes/optimizes for each platform
+
+#### [NEW] [pipeline/content/video_generator.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/pipeline/content/video_generator.py)
+- **Script**: Gemini generates a 30-60 second narration script with hook + body + conclusion
+- **TTS**: `edge-tts` converts script to `.mp3` with `en-US-GuyNeural` voice
+- **Footage**: Pexels Video API fetches 3-5 relevant clips based on topic keywords
+- **Compose**: MoviePy stitches clips, overlays TTS audio, adds animated word-by-word captions
+- **Output**: 1080x1920 (9:16) MP4 video, ≤60 seconds
+
+---
+
+### Social Media Publishers (Phase 4)
+
+#### [NEW] [pipeline/publishers/twitter_publisher.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/pipeline/publishers/twitter_publisher.py)
+- Uses `tweepy.Client` (v2 API) for text+image posts
+- Uses v1.1 media upload (if available) or v2 media endpoint for video
+- Handles rate limits with exponential backoff
+
+#### [NEW] [pipeline/publishers/linkedin_publisher.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/pipeline/publishers/linkedin_publisher.py)
+- OAuth 2.0 token management with refresh
+- Text+image posts via UGC Posts API
+- Video upload via LinkedIn Video API (register → upload → create post)
+
+#### [NEW] [pipeline/publishers/youtube_publisher.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/pipeline/publishers/youtube_publisher.py)
+- YouTube Data API v3 with OAuth 2.0
+- Uploads video with auto-generated title, description, tags
+- Sets `#Shorts` tag and vertical aspect ratio metadata
+
+---
+
+### Notifications (Phase 5)
+
+#### [NEW] [pipeline/notifications/telegram_notifier.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/pipeline/notifications/telegram_notifier.py)
+- Sends formatted messages to your Telegram chat:
+  - 🟢 "Pipeline started" (with timestamp)
+  - 📝 "3 text posts generated" (with previews)
+  - 🎬 "Video generated" (with thumbnail)
+  - 📤 "Published to X, LinkedIn, YouTube" (with links)
+  - 🔴 "Error occurred" (with details)
+
+#### [NEW] [pipeline/notifications/email_notifier.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/pipeline/notifications/email_notifier.py)
+- HTML email summary of the daily run
+- Includes: topics covered, post previews, publish links, any errors
+- Uses SMTP (Gmail App Password or similar)
+
+---
+
+### Dashboard (Phase 6)
+
+#### [NEW] [dashboard/app.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/dashboard/app.py)
+FastAPI app with endpoints:
+- `GET /` — Main dashboard page
+- `GET /api/runs` — Pipeline run history
+- `GET /api/posts` — Generated/published posts
+- `GET /api/stats` — Aggregated statistics
+- `GET /api/logs/{run_id}` — Logs for a specific run
+
+#### [NEW] [dashboard/templates/index.html](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/dashboard/templates/index.html)
+Modern dark-themed dashboard with:
+- **Hero stats row**: Total posts, videos, successful runs, error rate
+- **Recent runs table**: Timestamp, status, topics, posts count
+- **Post gallery**: Preview cards with images/video thumbnails
+- **Live log viewer**: Real-time pipeline output
+- Glassmorphism cards, smooth animations, Inter font
+
+#### [NEW] [dashboard/static/](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/dashboard/static/)
+CSS and JS for the dashboard — dark theme, responsive, animated
+
+---
+
+### Orchestrator (Phase 7)
+
+#### [NEW] [pipeline/orchestrator.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/pipeline/orchestrator.py)
+Main pipeline entry point:
+1. Notify "Pipeline started" via Telegram
+2. Fetch trending topics (Reddit + RSS)
+3. Select top 4 topics via AI
+4. Generate 3 text posts + 1 video
+5. Fetch images for text posts
+6. Publish all content to platforms
+7. Log results to SQLite
+8. Notify completion via Telegram + email
+9. Handle errors with retry + error notifications
+
+#### [NEW] [run_pipeline.py](file:///c:/Users/Admin/OneDrive/Desktop/content_automation_pipeline/run_pipeline.py)
+CLI entry point — `python run_pipeline.py` triggers one full run.
+Flags: `--dry-run` (generate without posting), `--dashboard` (start dashboard server)
+
+---
+
+## Project Structure
+```
+content_automation_pipeline/
+├── config/
+│   ├── __init__.py
+│   ├── settings.py              # API keys, feature flags
+│   └── sources.py               # Subreddits, RSS feed URLs
+├── pipeline/
+│   ├── __init__.py
+│   ├── sources/
+│   │   ├── __init__.py
+│   │   ├── reddit_scraper.py
+│   │   └── rss_fetcher.py
+│   ├── content/
+│   │   ├── __init__.py
+│   │   ├── topic_selector.py
+│   │   ├── text_generator.py
+│   │   ├── image_fetcher.py
+│   │   └── video_generator.py
+│   ├── publishers/
+│   │   ├── __init__.py
+│   │   ├── twitter_publisher.py
+│   │   ├── linkedin_publisher.py
+│   │   └── youtube_publisher.py
+│   ├── notifications/
+│   │   ├── __init__.py
+│   │   ├── telegram_notifier.py
+│   │   └── email_notifier.py
+│   └── orchestrator.py
+├── dashboard/
+│   ├── app.py
+│   ├── templates/
+│   │   └── index.html
+│   └── static/
+│       ├── style.css
+│       └── dashboard.js
+├── data/
+│   └── (pipeline.db created at runtime)
+├── output/
+│   ├── videos/                  # Generated videos
+│   ├── images/                  # Fetched images
+│   └── audio/                   # TTS narration files
+├── studio_caption.py            # Existing — UNTOUCHED
+├── .env                         # API keys (git-ignored)
+├── requirements.txt
+├── run_pipeline.py              # Main entry point
+└── README.md
+```
+
+## Decision Log
+
+| # | Decision | Alternatives | Rationale |
+|---|---|---|---|
+| 1 | **Gemini API** for all AI generation | OpenAI GPT-4, Claude | User already has Google API key; cost-effective; multimodal |
+| 2 | **edge-tts** for narration | ElevenLabs, gTTS, OpenAI TTS | Free, 100+ neural voices, no API key, high quality |
+| 3 | **Pexels API** for media | Unsplash, Pixabay | Free, excellent video library, Python SDK exists |
+| 4 | **MoviePy** for video editing | FFmpeg CLI, OpenCV | Pythonic API, built-in text/audio support, proven |
+| 5 | **FastAPI** for dashboard | Flask, Streamlit, Next.js | Async, fast, modern, built-in API docs, lightweight |
+| 6 | **SQLite** for data | PostgreSQL, MongoDB | Zero setup, file-based, perfect for single-user pipeline |
+| 7 | **Windows Task Scheduler** | cron, Celery, APScheduler | Native Windows, reliable, no extra dependencies |
+| 8 | **Direct APIs** for publishing | Buffer, Ayrshare, Hootsuite | Full control, no SaaS costs, more customizable |
+
+## Verification Plan
+
+### Automated Tests
+Since this is a new greenfield project, we will verify each phase incrementally:
+
+1. **Phase 2 — Sources**: Run `python -m pipeline.sources.reddit_scraper` and `python -m pipeline.sources.rss_fetcher` standalone to confirm they return trending topics
+2. **Phase 3 — Content**: Run `python run_pipeline.py --dry-run` to generate content without publishing; inspect output files in `output/`
+3. **Phase 4 — Publishers**: Test each publisher independently with a test post to confirm API connectivity
+4. **Phase 7 — Full Pipeline**: Run `python run_pipeline.py --dry-run` end-to-end, verify all outputs are generated and logged
+
+### Manual Verification
+1. **Dashboard**: Start with `python run_pipeline.py --dashboard`, open `http://localhost:8000` in browser, verify dark theme renders correctly and data populates
+2. **Telegram Notification**: After a dry run, check your Telegram for the notification message
+3. **Live Posting**: After dry-run passes, do one live run and verify posts appear on X, LinkedIn, and YouTube
+4. **Video Quality**: Manually inspect generated video — check captions alignment, audio sync, footage relevance

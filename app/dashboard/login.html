@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KontentPyper | Sign In</title>
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <link rel="stylesheet" href="/dashboard/static/design-system.css" />
+  <link rel="stylesheet" href="/dashboard/static/login.css" />
+</head>
+<body>
+
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-orb" aria-hidden="true"></div>
+
+  <main class="card" role="main">
+
+    <!-- Wordmark -->
+    <div class="wordmark">
+      <div class="wordmark-icon" aria-hidden="true"></div>
+      <div>
+        <div class="wordmark-name">KontentPyper</div>
+        <div class="wordmark-tag">AGENT v0.2</div>
+      </div>
+    </div>
+
+    <!-- Label -->
+    <div class="glow-label" style="margin-bottom:24px;">
+      Operator access
+    </div>
+
+    <!-- Alert -->
+    <div class="alert" id="alert" role="alert" aria-live="polite">
+      <span class="alert-msg"></span>
+    </div>
+
+    <form id="loginForm" autocomplete="on" novalidate>
+      <div class="form-group">
+        <label for="identifier">Identifier</label>
+        <input
+          id="identifier"
+          type="text"
+          placeholder="email or username"
+          autocomplete="username"
+          required
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          placeholder="••••••••••"
+          autocomplete="current-password"
+          required
+        />
+      </div>
+
+      <button type="submit" class="btn-primary" id="submitBtn">
+        <span class="btn-label">Authenticate</span>
+        <span class="btn-spinner" aria-hidden="true"></span>
+      </button>
+    </form>
+
+    <p class="card-footer">This terminal is restricted to authorized operators.</p>
+  </main>
+
+  <script src="/dashboard/static/login.js"></script>
+</body>
+</html>

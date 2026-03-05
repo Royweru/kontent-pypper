@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KontentPyper | Dashboard</title>
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <link rel="stylesheet" href="/dashboard/static/design-system.css" />
+  <link rel="stylesheet" href="/dashboard/static/dashboard.css" />
+</head>
+<body>
+
+<!-- Sidebar overlay (mobile backdrop) -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+<!-- ── Sidebar ──────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <header class="sidebar-header">
+    <a class="sidebar-wordmark" href="/dashboard">
+      <img src="/logo.png" alt="KontentPyper" class="wordmark-logo" />
+      <div>
+        <div class="wordmark-text">KontentPyper</div>
+        <div class="wordmark-version">AGENT v0.3</div>
+      </div>
+    </a>
+  </header>
+
+  <nav class="sidebar-nav" aria-label="Dashboard navigation">
+    <span class="nav-group-label">Overview</span>
+    <button class="nav-item active" data-page="overview"     onclick="navigate('overview')">
+      <span class="nav-icon" aria-hidden="true">◈</span> <span class="nav-label">Dashboard</span>
+    </button>
+    <button class="nav-item"        data-page="studio"       onclick="navigate('studio')">
+      <span class="nav-icon" aria-hidden="true">✦</span> <span class="nav-label">Studio</span>
+    </button>
+
+    <span class="nav-group-label">Automation</span>
+    <button class="nav-item"        data-page="connections"  onclick="navigate('connections')">
+      <span class="nav-icon" aria-hidden="true">⌬</span> <span class="nav-label">Connections</span>
+    </button>
+    <button class="nav-item"        data-page="schedule"     onclick="navigate('schedule')">
+      <span class="nav-icon" aria-hidden="true">◷</span> <span class="nav-label">Schedule</span>
+    </button>
+    <button class="nav-item"        data-page="campaigns"    onclick="navigate('campaigns')">
+      <span class="nav-icon" aria-hidden="true">◉</span> <span class="nav-label">Campaigns</span>
+    </button>
+
+    <span class="nav-group-label">Intelligence</span>
+    <button class="nav-item"        data-page="analytics"    onclick="navigate('analytics')">
+      <span class="nav-icon" aria-hidden="true">⟁</span> <span class="nav-label">Analytics</span>
+    </button>
+    <button class="nav-item"        data-page="posts"        onclick="navigate('posts')">
+      <span class="nav-icon" aria-hidden="true">≡</span> <span class="nav-label">Post History</span>
+    </button>
+  </nav>
+
+  <footer class="sidebar-footer">
+    <div class="user-row">
+      <div class="user-avatar" id="userInitials">KP</div>
+      <div class="user-meta">
+        <div class="user-name" id="userName">loading...</div>
+        <div class="user-plan" id="userPlan">TRIAL</div>
+      </div>
+      <button class="logout-btn" title="Sign out" onclick="logout()" aria-label="Sign out">→</button>
+    </div>
+  </footer>
+</aside>
+
+<!-- ── Main ─────────────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+        <span class="toggle-bar"></span>
+        <span class="toggle-bar"></span>
+        <span class="toggle-bar"></span>
+      </button>
+      <span class="topbar-title" id="topbarTitle">Dashboard</span>
+    </div>
+    <div class="topbar-right">
+      <span class="status-pill">
+        <span class="status-dot" aria-hidden="true"></span>
+        AGENT ACTIVE
+      </span>
+    </div>
+  </header>
+
+  <!-- ── Overview ──────────────────────────────────────────────── -->
+  <section class="page active" id="page-overview" aria-label="Overview">
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Total Posts</div>
+        <div class="stat-value mono" id="stat-posts">—</div>
+        <div class="stat-delta" id="stat-plan">ON TRIAL</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Connected Platforms</div>
+        <div class="stat-value mono" id="stat-platforms">—</div>
+        <div class="stat-delta">Active integrations</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Posts Remaining</div>
+        <div class="stat-value mono" id="stat-remaining">—</div>
+        <div class="stat-delta">this billing period</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Agent Status</div>
+        <div class="stat-value mono accent-text">ON</div>
+        <div class="stat-delta up">All systems normal</div>
+      </div>
+    </div>
+
+    <!-- Chart + feed -->
+    <div class="two-col">
+      <div class="surface-card">
+        <div class="section-header">
+          <span class="section-title">Engagement — 12 weeks</span>
+        </div>
+        <div class="chart-wrap" id="chartBars"></div>
+      </div>
+      <div class="surface-card">
+        <div class="section-header">
+          <span class="section-title">Recent Activity</span>
+        </div>
+        <div class="feed" id="recentFeed">
+          <div class="skeleton" style="height:52px; margin:4px 0;"></div>
+          <div class="skeleton" style="height:52px; margin:4px 0;"></div>
+          <div class="skeleton" style="height:52px; margin:4px 0;"></div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── Studio ────────────────────────────────────────────────── -->
+  <section class="page" id="page-studio" aria-label="Studio">
+
+    <div class="section-header" style="margin-bottom:20px;">
+      <span class="glow-label">Mini Studio</span>
+      <span class="muted" style="font-size:12px;">Write once — publish everywhere</span>
+    </div>
+
+    <div class="studio-grid">
+
+      <!-- Input -->
+      <div>
+        <div class="studio-card" style="margin-bottom:12px;">
+          <h3>01 · Content Input</h3>
+          <textarea id="studioInput" rows="7" placeholder="Paste your idea, article URL, or raw notes. KontentPyper will adapt it for every platform you select..."></textarea>
+
+          <div style="margin-top:14px;">
+            <div class="section-title" style="margin-bottom:8px;">Target platforms</div>
+            <div class="toggle-row" id="platformToggles"></div>
+          </div>
+
+          <button class="btn-primary" id="enhanceBtn" onclick="enhanceContent()">
+            ✦ ENHANCE WITH AI
+          </button>
+        </div>
+
+        <div class="studio-card">
+          <h3>02 · Attach Media</h3>
+          <div class="drop-zone" id="dropZone" onclick="document.getElementById('mediaInput').click()"
+               role="button" tabindex="0" aria-label="Upload media file">
+            <div class="drop-icon" aria-hidden="true">⊡</div>
+            <div class="drop-label">Drop file or <span class="accent-text">browse</span></div>
+            <div class="drop-hint">MP4 · MOV · JPG · PNG — max 512 MB</div>
+          </div>
+          <input type="file" id="mediaInput" accept="video/*,image/*" style="display:none"
+                 onchange="handleMediaSelect(this)" aria-hidden="true" />
+          <div id="mediaPreview"></div>
+        </div>
+      </div>
+
+      <!-- Preview + agent -->
+      <div>
+        <div class="studio-card" style="margin-bottom:12px;">
+          <h3>03 · Preview</h3>
+          <div class="preview-tabs" id="previewTabs"></div>
+          <div class="preview-content" id="previewContent">
+            Enhanced content will appear here after clicking "Enhance with AI"...
+          </div>
+          <button class="btn-primary" id="publishBtn" onclick="publishContent()" disabled>
+            ↑ PUBLISH NOW
+          </button>
+          <button class="btn-ghost" onclick="toast('Schedule feature coming in Phase 7', 'warning')">
+            ◷ SCHEDULE FOR LATER
+          </button>
+        </div>
+
+        <div class="studio-card">
+          <h3>04 · Ask the Agent</h3>
+          <div class="chat-input-row">
+            <input type="text" id="chatInput" placeholder="e.g. Make it more punchy..." />
+            <button class="chat-send-btn" onclick="agentChat()" aria-label="Send">→</button>
+          </div>
+          <div class="agent-reply" id="agentReply"></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── Connections ───────────────────────────────────────────── -->
+  <section class="page" id="page-connections" aria-label="Platform Connections">
+    <div class="section-header" style="margin-bottom:20px;">
+      <span class="glow-label">Platform Connections</span>
+    </div>
+    <div class="platform-grid" id="platformsGrid"></div>
+  </section>
+
+  <!-- ── Schedule ──────────────────────────────────────────────── -->
+  <section class="page" id="page-schedule" aria-label="Schedule">
+    <div class="coming-soon">
+      <span class="icon" aria-hidden="true">◷</span>
+      <h2>Post Scheduling</h2>
+      <p class="muted">Smart queue coming in Phase 7</p>
+    </div>
+  </section>
+
+  <!-- ── Campaigns ─────────────────────────────────────────────── -->
+  <section class="page" id="page-campaigns" aria-label="Campaigns">
+    <div class="coming-soon">
+      <span class="icon" aria-hidden="true">◉</span>
+      <h2>Video Campaigns</h2>
+      <p class="muted">Autonomous campaign engine coming in Phase 7</p>
+    </div>
+  </section>
+
+  <!-- ── Analytics ─────────────────────────────────────────────── -->
+  <section class="page" id="page-analytics" aria-label="Analytics">
+    <div class="section-header" style="margin-bottom:20px;">
+      <span class="glow-label">Intelligence</span>
+      <span class="muted" style="font-size:12px;">Strategic AI Reflection</span>
+    </div>
+
+    <div class="stats-row" style="margin-bottom: 24px;">
+      <div class="stat-card">
+        <div class="stat-label">Total Views</div>
+        <div class="stat-value mono" id="analytics-views">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Engagements</div>
+        <div class="stat-value mono" id="analytics-engagements">—</div>
+      </div>
+      <div class="stat-card" style="grid-column: span 2;">
+        <div class="stat-label">Top Performing Platform</div>
+        <div class="stat-value mono accent-text" id="analytics-top-platform">—</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="surface-card">
+        <div class="section-header">
+          <span class="section-title">AI Strategist</span>
+          <button class="btn-ghost" id="reflectBtn" onclick="runReflection()" style="padding:4px 8px; font-size:12px;">
+            ✦ RUN ANALYSIS
+          </button>
+        </div>
+        <div id="reflectionResult" style="margin-top: 16px;">
+          <div class="empty-state">Click 'Run Analysis' to let KontentPyper analyze your recent performance and suggest strategy adjustments.</div>
+        </div>
+      </div>
+
+      <div class="surface-card">
+        <div class="section-header">
+          <span class="section-title">Recent Metrics</span>
+        </div>
+        <div class="feed" id="analyticsFeed">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Post History ───────────────────────────────────────────── -->
+  <section class="page" id="page-posts" aria-label="Post History">
+    <div class="section-header" style="margin-bottom:20px;">
+      <span class="glow-label">Post History</span>
+    </div>
+    <div class="feed" id="postHistoryFeed">
+      <div class="skeleton" style="height:52px; margin:4px 0;"></div>
+      <div class="skeleton" style="height:52px; margin:4px 0;"></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Toast stack -->
+<div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
+
+<script src="/dashboard/static/dashboard.js"></script>
+</body>
+</html>

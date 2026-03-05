@@ -1,0 +1,111 @@
+"""
+KontentPyper - Application Configuration
+Reads all environment variables via Pydantic Settings.
+"""
+
+from pydantic_settings import BaseSettings
+from typing import List
+
+
+class Settings(BaseSettings):
+    # ── Application Identity ──────────────────────────────────────
+    APP_NAME: str = "KontentPyper"
+    DEBUG: bool = False
+
+    # ── Database (Neon PostgreSQL) ────────────────────────────────
+    DATABASE_URL: str = ""
+
+    # ── JWT Authentication ────────────────────────────────────────
+    SECRET_KEY: str = "change-me-to-a-real-secret"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_HOURS: int = 24
+
+    # ── AI / LLM Providers ────────────────────────────────────────
+    OPENAI_API_KEY: str = ""
+    GOOGLE_GEMINI_API_KEY: str = ""
+
+    # ── Social Platform: Twitter / X  (OAuth 1.0a) ───────────────
+    TWITTER_API_KEY: str = ""
+    TWITTER_API_SECRET: str = ""
+    TWITTER_BEARER_TOKEN: str = ""
+    TWITTER_CONSUMER_KEY: str = ""
+
+    # ── Social Platform: LinkedIn (OAuth 2.0) ─────────────────────
+    LINKEDIN_CLIENT_ID: str = ""
+    LINKEDIN_CLIENT_SECRET: str = ""
+
+    # ── Social Platform: YouTube / Google (OAuth 2.0) ─────────────
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+
+    # ── Social Platform: TikTok (OAuth 2.0 + PKCE) ───────────────
+    TIKTOK_CLIENT_ID: str = ""
+    TIKTOK_CLIENT_SECRET: str = ""
+
+    # ── Social Platform: Facebook (OAuth 2.0) ─────────────────────
+    FACEBOOK_APP_ID: str = ""
+    FACEBOOK_APP_SECRET: str = ""
+
+    # ── Social Platform: Instagram (OAuth 2.0, via Facebook) ──────
+    INSTAGRAM_CLIENT_ID: str = ""
+    INSTAGRAM_CLIENT_SECRET: str = ""
+
+    # ── Reddit (Content Source) ───────────────────────────────────
+    REDDIT_CLIENT_ID: str = ""
+    REDDIT_CLIENT_SECRET: str = ""
+    REDDIT_USER_AGENT: str = "KontentPyper/1.0"
+
+    # ── Pexels (Stock Media) ──────────────────────────────────────
+    PEXELS_API_KEY: str = ""
+
+    # ── Cloud Storage ─────────────────────────────────────────────
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
+    USE_CLOUDINARY: bool = False
+
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_BUCKET_NAME: str = ""
+    AWS_REGION: str = "us-east-1"
+
+    UPLOAD_DIR: str = "uploads/"
+
+    # ── Email / SMTP ──────────────────────────────────────────────
+    SMTP_SERVER: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    FROM_EMAIL: str = "noreply@kontentpyper.com"
+    FROM_NAME: str = "KontentPyper"
+
+    # ── Telegram Notifications ────────────────────────────────────
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_CHAT_ID: str = ""
+
+    # ── URLs ──────────────────────────────────────────────────────
+    FRONTEND_URL: str = "http://localhost:3000"
+    BACKEND_URL: str = "http://localhost:8000"
+
+    ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+    ]
+
+    # ── Video/Media Generation Defaults ───────────────────────────
+    VIDEO_OUTPUT_DIR: str = "videos/"
+    VIDEO_TEMP_DIR: str = "temp/"
+    VIDEO_MAX_DURATION: int = 180
+    VIDEO_DEFAULT_ASPECT: str = "9:16"
+
+    OPENAI_TTS_MODEL: str = "tts-1"
+    OPENAI_TTS_VOICE: str = "alloy"
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+        extra = "ignore"
+
+
+settings = Settings()

@@ -1,0 +1,25 @@
+# Environment
+.env
+venv/
+__pycache__/
+*.pyc
+
+# Output files
+output/
+data/*.db
+
+# IDE
+.vscode/
+.idea/
+.qodo/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# YouTube OAuth
+client_secrets.json
+token.json
+
+# Studio output (existing)
+studio_output/
