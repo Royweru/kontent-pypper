@@ -84,8 +84,7 @@ class Settings(BaseSettings):
     TELEGRAM_CHAT_ID: str = ""
 
     # ── URLs ──────────────────────────────────────────────────────
-    FRONTEND_URL: str = "http://localhost:3000"
-    BACKEND_URL: str = "http://localhost:8000"
+    BACKEND_URL: str = "https://kontent-pypper.onrender.com"
 
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
