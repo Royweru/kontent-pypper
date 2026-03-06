@@ -41,6 +41,7 @@ const PAGE_TITLES = {
   campaigns:   'Campaigns',
   analytics:   'Analytics',
   posts:       'Post History',
+  settings:    'Settings',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -91,6 +92,7 @@ function navigate(pageId) {
   if (pageId === 'posts')       loadPostHistory();
   if (pageId === 'connections') renderPlatforms();
   if (pageId === 'analytics')   loadAnalytics();
+  if (pageId === 'settings')    loadTelegramSettings();
 }
 
 // ── Auth & user ───────────────────────────────────────────────────
@@ -499,3 +501,104 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+// ── Telegram Integration ───────────────────────────────────────────────────
+async function loadTelegramSettings() {
+  try {
+    const r = await apiFetch('/auth/settings/telegram');
+    if (!r.ok) return;
+    const data = await r.json();
+
+    const statusEl = document.getElementById('tgStatus');
+    const textEl   = document.getElementById('tgStatusText');
+    const metaEl   = document.getElementById('tgStatusMeta');
+    const detectEl = document.getElementById('tgDetectSection');
+
+    if (data.is_linked) {
+      statusEl.style.display = 'flex';
+      statusEl.querySelector('.feed-dot').style.background = 'var(--accent)';
+      textEl.textContent = 'Telegram linked';
+      metaEl.textContent = 'Chat ID: ' + data.chat_id;
+      detectEl.style.display = 'none';
+    } else if (data.has_bot_token) {
+      statusEl.style.display = 'flex';
+      statusEl.querySelector('.feed-dot').style.background = 'var(--amber)';
+      textEl.textContent = 'Bot token saved -- awaiting /start detection';
+      metaEl.textContent = 'Send /start to the bot, then click Detect';
+      detectEl.style.display = 'block';
+    } else {
+      statusEl.style.display = 'none';
+      detectEl.style.display = 'none';
+    }
+  } catch (e) {
+    console.error('Telegram settings load error', e);
+  }
+}
+
+async function saveTelegramToken() {
+  const input = document.getElementById('tgBotToken');
+  const btn   = document.getElementById('tgSaveBtn');
+  const val   = input.value.trim();
+
+  if (!val) { toast('Enter a bot token first', 'error'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    const r = await apiFetch('/auth/settings/telegram', {
+      method: 'PUT',
+      body: JSON.stringify({ bot_token: val }),
+    });
+    const data = await r.json();
+
+    if (!r.ok) {
+      toast(data.detail || 'Invalid token', 'error');
+      return;
+    }
+
+    toast(data.message, 'success');
+    input.value = '';
+
+    // Show detect section
+    var botNameEl = document.getElementById('tgBotName');
+    if (botNameEl) botNameEl.textContent = '@' + (data.bot_username || 'yourbot');
+    document.getElementById('tgDetectSection').style.display = 'block';
+
+    loadTelegramSettings();
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
+}
+
+async function detectTelegramChat() {
+  const btn = document.getElementById('tgDetectBtn');
+  const msg = document.getElementById('tgDetectMsg');
+
+  btn.disabled = true;
+  btn.textContent = 'Detecting...';
+  msg.textContent = '';
+
+  try {
+    const r = await apiFetch('/auth/settings/telegram/detect', { method: 'POST' });
+    const data = await r.json();
+
+    if (data.success) {
+      toast(data.message, 'success');
+      msg.textContent = '';
+      loadTelegramSettings();
+    } else {
+      msg.textContent = data.message;
+      msg.style.color = 'var(--amber)';
+    }
+  } catch (e) {
+    msg.textContent = 'Detection failed: ' + e.message;
+    msg.style.color = 'var(--danger)';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Detect Chat ID';
+  }
+}

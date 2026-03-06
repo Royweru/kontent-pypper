@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KontentPyper | Create Account</title>
+  <meta name="description" content="Create your KontentPyper account and start automating your social media content." />
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <link rel="stylesheet" href="/dashboard/static/design-system.css" />
+  <link rel="stylesheet" href="/dashboard/static/login.css" />
+  <link rel="stylesheet" href="/static/public.css" />
+</head>
+<body>
+
+<!-- ── Navbar ────────────────────────────────────────────── -->
+<nav class="pub-nav" id="pubNav">
+  <a href="/" class="pub-nav-brand">
+    <img src="/logo.png" alt="KontentPyper" />
+    <span class="pub-nav-brand-name">KontentPyper</span>
+    <span class="pub-nav-brand-tag">AGENT</span>
+  </a>
+  <div class="pub-nav-links">
+    <a href="/" class="pub-nav-link">Home</a>
+    <a href="/dashboard/login" class="pub-nav-cta">Login</a>
+  </div>
+</nav>
+
+<!-- ── Background effects ───────────────────────────────── -->
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="bg-orb" aria-hidden="true"></div>
+
+<!-- ── Signup Card ───────────────────────────────────────── -->
+<div class="signup-page">
+  <main class="card" role="main">
+
+    <div class="wordmark">
+      <img src="/logo.png" alt="" style="width:38px;height:38px;border-radius:8px;" />
+      <div>
+        <div class="wordmark-name">KontentPyper</div>
+        <div class="wordmark-tag">CREATE ACCOUNT</div>
+      </div>
+    </div>
+
+    <div class="glow-label" style="margin-bottom:24px;">
+      New operator registration
+    </div>
+
+    <!-- Alert -->
+    <div class="alert" id="alert" role="alert" aria-live="polite">
+      <span class="alert-msg"></span>
+    </div>
+
+    <form id="signupForm" autocomplete="on" novalidate>
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input
+          id="username"
+          type="text"
+          placeholder="your_username"
+          autocomplete="username"
+          required
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          placeholder="operator@example.com"
+          autocomplete="email"
+          required
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          placeholder="Min 8 characters"
+          autocomplete="new-password"
+          required
+          minlength="8"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="confirmPassword">Confirm Password</label>
+        <input
+          id="confirmPassword"
+          type="password"
+          placeholder="Re-enter password"
+          autocomplete="new-password"
+          required
+        />
+      </div>
+
+      <button type="submit" class="btn-primary" id="submitBtn">
+        <span class="btn-label">Create Account</span>
+        <span class="btn-spinner" aria-hidden="true"></span>
+      </button>
+    </form>
+
+    <p class="card-footer">
+      Already have an account? <a href="/dashboard/login" style="color:var(--accent);text-decoration:none;">Sign in</a>
+    </p>
+    <p class="card-footer" style="margin-top:8px;">
+      By signing up you agree to our <a href="/terms" style="color:var(--lavender);text-decoration:underline;text-underline-offset:3px;">Terms</a> and <a href="/privacy" style="color:var(--lavender);text-decoration:underline;text-underline-offset:3px;">Privacy Policy</a>.
+    </p>
+  </main>
+</div>
+
+<script src="/static/signup.js"></script>
+</body>
+</html>

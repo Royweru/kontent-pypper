@@ -5,7 +5,8 @@ Fetches real-time analytics data from social platforms and updates local DB.
 import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.post import Post, PostResult, PostAnalytics
+from app.models.post import Post, PostResult
+from app.models.analytics import PostAnalytics
 from app.models.social import SocialConnection
 
 logger = logging.getLogger(__name__)

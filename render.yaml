@@ -1,0 +1,66 @@
+# render.yaml -- KontentPyper Render Blueprint
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: kontentpyper
+    runtime: docker
+    plan: free
+    region: oregon
+
+    # Render injects $PORT automatically -- the Dockerfile CMD handles it.
+    dockerfilePath: ./Dockerfile
+
+    # Health-check endpoint (keep the service awake)
+    healthCheckPath: /health
+
+    envVars:
+      # ── Core ──────────────────────────────────────────────────────
+      - key: DATABASE_URL
+        sync: false          # Set manually in Render dashboard
+
+      - key: SECRET_KEY
+        generateValue: true  # Render auto-generates a secure random value
+
+      - key: BACKEND_URL
+        sync: false          # e.g. https://kontentpyper.onrender.com
+
+      - key: ALLOWED_ORIGINS
+        sync: false          # Same as BACKEND_URL
+
+      # ── AI ────────────────────────────────────────────────────────
+      - key: OPENAI_API_KEY
+        sync: false
+
+      - key: GOOGLE_GEMINI_API_KEY
+        sync: false
+
+      # ── Social Platforms ──────────────────────────────────────────
+      - key: TWITTER_API_KEY
+        sync: false
+      - key: TWITTER_API_SECRET
+        sync: false
+      - key: TWITTER_ACCESS_TOKEN
+        sync: false
+      - key: TWITTER_ACCESS_SECRET
+        sync: false
+
+      - key: LINKEDIN_CLIENT_ID
+        sync: false
+      - key: LINKEDIN_CLIENT_SECRET
+        sync: false
+
+      - key: YOUTUBE_CLIENT_ID
+        sync: false
+      - key: YOUTUBE_CLIENT_SECRET
+        sync: false
+
+      - key: TIKTOK_CLIENT_KEY
+        sync: false
+      - key: TIKTOK_CLIENT_SECRET
+        sync: false
+
+      - key: FACEBOOK_APP_ID
+        sync: false
+      - key: FACEBOOK_APP_SECRET
+        sync: false

@@ -91,3 +91,102 @@ async def login(db: DB, form_data: OAuth2PasswordRequestForm = Depends()):
 async def get_me(current_user: CurrentUser):
     """Return the currently authenticated user's profile."""
     return current_user
+
+
+# ── Telegram Integration ──────────────────────────────────────────
+
+from app.schemas.auth import TelegramSettings, TelegramDetectResponse
+
+
+@router.get("/settings/telegram")
+async def get_telegram_settings(user: CurrentUser):
+    """Return the current user's Telegram integration status."""
+    return {
+        "has_bot_token": bool(user.telegram_bot_token),
+        "chat_id": user.telegram_chat_id or None,
+        "is_linked": bool(user.telegram_bot_token and user.telegram_chat_id),
+    }
+
+
+@router.put("/settings/telegram")
+async def save_telegram_token(payload: TelegramSettings, user: CurrentUser, db: DB):
+    """Save the Telegram bot token for the current user."""
+    import httpx
+
+    # Validate the token by calling getMe
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(f"https://api.telegram.org/bot{payload.bot_token}/getMe")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=400, detail="Invalid bot token. Please double-check it.")
+
+    bot_info = resp.json().get("result", {})
+
+    user.telegram_bot_token = payload.bot_token
+    user.telegram_chat_id = None  # Clear old chat_id, user needs to re-link
+    await db.commit()
+
+    return {
+        "success": True,
+        "bot_username": bot_info.get("username", ""),
+        "message": f"Bot @{bot_info.get('username', '')} saved. Now send /start to your bot in Telegram, then click Detect.",
+    }
+
+
+@router.post("/settings/telegram/detect", response_model=TelegramDetectResponse)
+async def detect_telegram_chat(user: CurrentUser, db: DB):
+    """
+    Poll the Telegram getUpdates API to auto-detect the chat_id.
+    The user must send /start to their bot before calling this.
+    """
+    import httpx
+
+    if not user.telegram_bot_token:
+        raise HTTPException(status_code=400, detail="No bot token configured. Save your bot token first.")
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            f"https://api.telegram.org/bot{user.telegram_bot_token}/getUpdates",
+            params={"limit": 10, "timeout": 0}
+        )
+
+    if resp.status_code != 200:
+        return TelegramDetectResponse(success=False, message="Failed to reach Telegram API. Check your bot token.")
+
+    data = resp.json()
+    updates = data.get("result", [])
+
+    if not updates:
+        return TelegramDetectResponse(
+            success=False,
+            message="No messages found. Please send /start to your bot in Telegram and try again."
+        )
+
+    # Find the most recent /start or any message
+    chat_id = None
+    chat_username = None
+
+    for update in reversed(updates):
+        msg = update.get("message", {})
+        chat = msg.get("chat", {})
+        if chat.get("id"):
+            chat_id = str(chat["id"])
+            chat_username = chat.get("username") or chat.get("first_name", "")
+            break
+
+    if not chat_id:
+        return TelegramDetectResponse(
+            success=False,
+            message="Could not detect a chat. Send /start to your bot and try again."
+        )
+
+    # Save to database
+    user.telegram_chat_id = chat_id
+    await db.commit()
+
+    return TelegramDetectResponse(
+        success=True,
+        chat_id=chat_id,
+        username=chat_username,
+        message=f"Linked to {chat_username} (chat {chat_id}). Telegram notifications are now active."
+    )

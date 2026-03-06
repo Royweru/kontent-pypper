@@ -52,6 +52,11 @@
     <button class="nav-item"        data-page="posts"        onclick="navigate('posts')">
       <span class="nav-icon" aria-hidden="true">≡</span> <span class="nav-label">Post History</span>
     </button>
+
+    <span class="nav-group-label">Account</span>
+    <button class="nav-item"        data-page="settings"     onclick="navigate('settings')">
+      <span class="nav-icon" aria-hidden="true">⚙</span> <span class="nav-label">Settings</span>
+    </button>
   </nav>
 
   <footer class="sidebar-footer">
@@ -284,6 +289,54 @@
     <div class="feed" id="postHistoryFeed">
       <div class="skeleton" style="height:52px; margin:4px 0;"></div>
       <div class="skeleton" style="height:52px; margin:4px 0;"></div>
+    </div>
+  </section>
+
+  <!-- ── Settings ────────────────────────────────────────────────────── -->
+  <section class="page" id="page-settings" aria-label="Settings">
+    <div class="section-header" style="margin-bottom:20px;">
+      <span class="glow-label">Settings</span>
+      <span class="muted" style="font-size:12px;">Integrations & Preferences</span>
+    </div>
+
+    <!-- Telegram Integration -->
+    <div class="surface-card" style="max-width:560px;">
+      <div class="section-header" style="margin-bottom:16px;">
+        <span class="section-title">Telegram Integration</span>
+      </div>
+      <p style="font-size:13px; color:var(--text-muted); line-height:1.6; margin-bottom:18px;">
+        Connect a Telegram bot to receive notifications about post results, scheduling events, and agent updates. Create a bot via <a href="https://t.me/BotFather" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline;text-underline-offset:3px;">@BotFather</a> first.
+      </p>
+
+      <!-- Status indicator -->
+      <div id="tgStatus" class="feed-item" style="margin-bottom:18px; display:none;">
+        <div class="feed-dot" style="background:var(--accent);"></div>
+        <div class="feed-body">
+          <div class="feed-text" id="tgStatusText">Not linked</div>
+          <div class="feed-meta" id="tgStatusMeta"></div>
+        </div>
+      </div>
+
+      <!-- Step 1: Bot token -->
+      <div style="margin-bottom:16px;">
+        <label for="tgBotToken" style="display:block; font-family:var(--font-mono); font-size:11px; letter-spacing:0.08em; color:var(--text-muted); text-transform:uppercase; margin-bottom:7px;">Bot Token</label>
+        <div style="display:flex; gap:8px;">
+          <input type="password" id="tgBotToken" placeholder="123456:ABC-DEF1234ghIkl-zyx57..." style="flex:1; padding:11px 14px; background:var(--base); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-family:var(--font-mono); font-size:13px; outline:none;" />
+          <button class="btn-primary" id="tgSaveBtn" onclick="saveTelegramToken()" style="width:auto; padding:11px 20px; font-size:12px;">Save</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Auto-detect -->
+      <div id="tgDetectSection" style="display:none;">
+        <div style="padding:14px; background:rgba(200,249,81,0.04); border:1px solid rgba(200,249,81,0.1); border-radius:var(--radius); margin-bottom:14px;">
+          <p style="font-size:13px; color:var(--text); margin-bottom:4px; font-weight:500;">Step 2: Link your account</p>
+          <p style="font-size:12px; color:var(--text-muted); line-height:1.5;">
+            Open Telegram, find your bot <span class="mono accent-text" id="tgBotName">@yourbot</span>, and send <code style="background:var(--surface2); padding:2px 6px; border-radius:4px; font-size:11px;">/start</code>. Then click Detect below.
+          </p>
+        </div>
+        <button class="btn-primary" id="tgDetectBtn" onclick="detectTelegramChat()" style="background:var(--lavender); width:auto; padding:11px 20px; font-size:12px;">Detect Chat ID</button>
+        <span class="muted" id="tgDetectMsg" style="font-size:12px; margin-left:10px;"></span>
+      </div>
     </div>
   </section>
 

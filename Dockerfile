@@ -26,5 +26,6 @@ COPY . .
 # Expose the application port
 EXPOSE 8000
 
-# Command to run the application with Uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run DB migrations then start the server.
+# ${PORT:-8000} uses Render's injected $PORT in production, falls back to 8000 locally.
+CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}

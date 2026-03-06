@@ -54,6 +54,10 @@ class User(Base):
     email_on_post_failure = Column(Boolean, server_default=text("TRUE"))
     email_weekly_analytics = Column(Boolean, server_default=text("TRUE"))
 
+    # Telegram integration
+    telegram_bot_token = Column(String, nullable=True)
+    telegram_chat_id = Column(String, nullable=True)
+
     # ── Relationships ─────────────────────────────────────────────
     social_connections = relationship(
         "SocialConnection", back_populates="user", cascade="all, delete-orphan"
