@@ -9,7 +9,7 @@ from typing import List
 
 class Settings(BaseSettings):
     # ── Application Identity ──────────────────────────────────────
-    APP_NAME: str = "KontentPyper"
+    APP_NAME: str = "KontentPypper"
     DEBUG: bool = False
 
     # ── Database (Neon PostgreSQL) ────────────────────────────────
@@ -76,8 +76,8 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
-    FROM_EMAIL: str = "noreply@kontentpyper.com"
-    FROM_NAME: str = "KontentPyper"
+    FROM_EMAIL: str = "rythmcode13@gmail.com"
+    FROM_NAME: str = "KontentPypper"
 
     # ── Telegram Notifications ────────────────────────────────────
     TELEGRAM_BOT_TOKEN: str = ""

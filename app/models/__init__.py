@@ -20,3 +20,4 @@ from app.models.analytics import (  # noqa: F401
     UserAnalyticsSummary,
     TemplateAnalytics,
 )
+from app.models.content_source import ContentItem, ApprovalQueue  # noqa: F401

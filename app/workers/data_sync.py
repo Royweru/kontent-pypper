@@ -22,7 +22,7 @@ async def fetch_and_store_analytics(db: AsyncSession, user_id: int):
     # In a real scenario, you'd filter by date to avoid re-fetching ancient posts constantly.
     q = select(PostResult).join(Post).where(
         Post.user_id == user_id,
-        PostResult.success == True
+        PostResult.status == 'published'
     )
     recent_results = (await db.execute(q)).scalars().all()
 
