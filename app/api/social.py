@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from app.api.deps import CurrentUser, DB
 from app.services.oauth_service import OAuthService
 from app.services.social_service import SocialService
+from app.core.database import get_db
 from app.core.config import settings
 
 router = APIRouter()
