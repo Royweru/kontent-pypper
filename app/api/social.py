@@ -5,10 +5,11 @@ Handles OAuth initialization, callbacks, and platform connections listing.
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
+from sqlalchemy import delete
 from app.api.deps import CurrentUser, DB
 from app.services.oauth_service import OAuthService
 from app.services.social_service import SocialService
-from app.core.database import get_db
+from app.models.social import SocialConnection
 from app.core.config import settings
 
 router = APIRouter()
@@ -132,12 +133,12 @@ async def oauth_callback(
 @router.delete("/disconnect/{platform}")
 async def disconnect_platform(
     platform: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user: CurrentUser,
+    db: DB,
 ):
     """Remove a social platform connection for the current user."""
     stmt = delete(SocialConnection).where(
-        SocialConnection.user_id == current_user.id,
+        SocialConnection.user_id == user.id,
         SocialConnection.platform == platform,
     )
     await db.execute(stmt)
