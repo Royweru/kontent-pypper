@@ -89,3 +89,15 @@ def setup_jobs(scheduler):
         replace_existing=True
     )
     logger.info("Registered 'scheduled_ai_reflection' job to run every 7 days.")
+
+    # 3. Daily Content Pipeline + Telegram HITL (Every day at 08:00)
+    from app.services.scheduler.daily_pipeline import orchestrate_all_users
+    scheduler.add_job(
+        orchestrate_all_users,
+        'cron',
+        hour=8,
+        minute=0,
+        id="daily_content_pipeline_job",
+        replace_existing=True,
+    )
+    logger.info("Registered 'daily_content_pipeline_job' to run daily at 08:00.")

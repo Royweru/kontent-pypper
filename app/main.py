@@ -56,6 +56,10 @@ app.include_router(news.router,      prefix="/api/v1/news",      tags=["news"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 app.mount("/dashboard/static", StaticFiles(directory=str(STATIC_DIR)), name="dashboard-static")
 
+# -- Webhooks ---------------------------------------------------------------
+from app.api.webhook import telegram as tg_webhook
+app.include_router(tg_webhook.router, prefix="/webhook", tags=["webhook"])
+
 # -- Public Pages (landing, signup, terms, privacy) -------------------------
 app.include_router(public_pages.router, tags=["public"])
 app.mount("/static", StaticFiles(directory=str(PUBLIC_STATIC_DIR)), name="public-static")

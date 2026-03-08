@@ -39,6 +39,7 @@ const PAGE_TITLES = {
   connections: 'Connections',
   schedule:    'Schedule',
   campaigns:   'Campaigns',
+  news:        'News Feed',
   analytics:   'Analytics',
   posts:       'Post History',
   settings:    'Settings',
@@ -90,6 +91,7 @@ function navigate(pageId) {
   }
 
   if (pageId === 'posts')       loadPostHistory();
+  if (pageId === 'news')        loadNewsFeed();
   if (pageId === 'connections') renderPlatforms();
   if (pageId === 'analytics')   loadAnalytics();
   if (pageId === 'settings')    loadTelegramSettings();
@@ -201,6 +203,67 @@ async function loadPostHistory() {
   } catch {
     el.innerHTML = `<div class="empty-state">Could not load history</div>`;
   }
+}
+
+// ── News Feed ─────────────────────────────────────────────────────
+async function loadNewsFeed() {
+  const el = document.getElementById('newsFeedList');
+  if (!el) return;
+  
+  el.innerHTML = '<div class="skeleton" style="height:80px; margin:4px 0;"></div><div class="skeleton" style="height:80px; margin:4px 0;"></div>';
+  
+  try {
+    const r = await apiFetch('/news/feed?limit=25');
+    if (!r.ok) throw new Error('Failed to fetch news');
+    const items = await r.json();
+    
+    if (!items.length) {
+      el.innerHTML = `<div class="empty-state">No news found. Ensure your ingestion services are running.</div>`;
+      return;
+    }
+    
+    el.innerHTML = items.map(item => {
+      const srcClr  = item.source_type === 'reddit' ? '#FF4500' : '#EAB308';
+      const snippet = item.snippet ? `<div style="font-size:13px; color:var(--text-2); margin-top:8px; line-height:1.5;">${esc(item.snippet)}</div>` : '';
+      const safeTitle = esc(item.title).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      const safeUrl   = esc(item.url).replace(/'/g, "%27");
+      
+      return `
+        <div class="feed-item" style="flex-direction:column; align-items:flex-start; padding:16px;">
+          <div style="display:flex; justify-content:space-between; width:100%; align-items:flex-start;">
+            <div style="flex:1;">
+              <a href="${item.url}" target="_blank" rel="noopener" style="color:var(--text); text-decoration:none; font-weight:500; font-size:15px; line-height:1.4; display:block;" class="trunc">
+                ${esc(item.title)}
+              </a>
+              <div style="display:flex; gap:10px; font-size:12px; color:var(--text-muted); margin-top:6px; align-items:center;">
+                <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${srcClr};"></span>
+                <span>${esc(item.source_name)}</span>
+                <span>·</span>
+                <span>Rating: ${Math.round(item.relevance_score * 10) / 10}</span>
+              </div>
+            </div>
+            <button class="btn-ghost" style="padding:6px 12px; font-size:11px; margin-left:12px; border:1px solid var(--border);" onclick="sendNewsToStudio('${safeTitle}', '${safeUrl}')">
+               ✎ Write Post
+            </button>
+          </div>
+          ${snippet}
+        </div>
+      `;
+    }).join('');
+    
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state">Could not load news feed: ${esc(e.message)}</div>`;
+  }
+}
+
+function sendNewsToStudio(title, url) {
+  const content = `Trending topic: ${title}\n\nSource link: ${url}\n\nPlease adapt this into a compelling post.`;
+  const input = document.getElementById('studioInput');
+  if (input) {
+      input.value = content;
+  }
+  navigate('studio');
+  toast('News imported to Studio', 'success');
 }
 
 // ── Platform connections ──────────────────────────────────────────

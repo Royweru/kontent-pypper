@@ -46,6 +46,9 @@
     </button>
 
     <span class="nav-group-label">Intelligence</span>
+    <button class="nav-item"        data-page="news"         onclick="navigate('news')">
+      <span class="nav-icon" aria-hidden="true">◂</span> <span class="nav-label">News Feed</span>
+    </button>
     <button class="nav-item"        data-page="analytics"    onclick="navigate('analytics')">
       <span class="nav-icon" aria-hidden="true">⟁</span> <span class="nav-label">Analytics</span>
     </button>
@@ -233,6 +236,20 @@
       <span class="icon" aria-hidden="true">◉</span>
       <h2>Video Campaigns</h2>
       <p class="muted">Autonomous campaign engine coming in Phase 7</p>
+    </div>
+  </section>
+
+  <!-- ── News Feed ──────────────────────────────────────────────── -->
+  <section class="page" id="page-news" aria-label="News Feed">
+    <div class="section-header" style="margin-bottom:20px;">
+      <span class="glow-label">AI Curated News Feed</span>
+      <span class="muted" style="font-size:12px;">The best trending stories for your niche</span>
+    </div>
+    
+    <div class="feed" id="newsFeedList">
+      <div class="skeleton" style="height:80px; margin:4px 0;"></div>
+      <div class="skeleton" style="height:80px; margin:4px 0;"></div>
+      <div class="skeleton" style="height:80px; margin:4px 0;"></div>
     </div>
   </section>
 
