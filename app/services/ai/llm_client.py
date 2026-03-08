@@ -50,7 +50,7 @@ class LLMClient:
         random keys or formats.
         """
         structured_llm = self.llm.with_structured_output(
-            response_model, method="json_schema"
+            response_model, method="function_calling"
         )
         # Override temperature per-call
         structured_llm = structured_llm.bind(temperature=temperature)

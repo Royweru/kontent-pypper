@@ -437,13 +437,12 @@ async function enhanceContent() {
     const data = await r.json();
     enhancedContent = data.enhanced ?? {};
     renderPreview(selected[0]);
-    document.getElementById('publishBtn').disabled = false;
-    toast('Content enhanced', 'success');
+    toast('Content enhanced! You can now publish or edit further.', 'success');
   } catch (e) {
     toast(e.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.textContent = '✦ ENHANCE WITH AI';
+    btn.textContent = '\u2726 ENHANCE WITH AI';
   }
 }
 
@@ -473,7 +472,20 @@ function switchTab(pid) {
 // ── Studio: publish ───────────────────────────────────────────────
 async function publishContent() {
   const selected = getSelectedPlatforms();
-  if (!selected.length || !Object.keys(enhancedContent).length) return;
+  if (!selected.length) { toast('Select at least one platform', 'error'); return; }
+
+  const raw = document.getElementById('studioInput')?.value.trim();
+
+  // Build content map: use enhanced content if available, otherwise use raw text
+  let contentMap = {};
+  if (Object.keys(enhancedContent).length) {
+    contentMap = enhancedContent;
+  } else if (raw) {
+    selected.forEach(p => { contentMap[p] = raw; });
+  } else {
+    toast('Write some content first', 'error');
+    return;
+  }
 
   const btn = document.getElementById('publishBtn');
   btn.disabled = true;
@@ -482,7 +494,7 @@ async function publishContent() {
   try {
     const r = await apiFetch('/studio/publish', {
       method: 'POST',
-      body:   JSON.stringify({ platform_specific_content: enhancedContent, platforms: selected }),
+      body:   JSON.stringify({ platform_specific_content: contentMap, platforms: selected }),
     });
     const data = await r.json();
     if (r.ok) {
@@ -507,21 +519,37 @@ async function publishContent() {
 async function agentChat() {
   const input = document.getElementById('chatInput');
   const reply = document.getElementById('agentReply');
+  const sendBtn = input?.parentElement?.querySelector('.chat-send-btn');
   const msg   = input?.value.trim();
   if (!msg || !reply) return;
 
   reply.style.display = 'block';
-  reply.textContent   = 'Agent computing...';
+  reply.innerHTML = '<span style="color:var(--primary);font-size:13px;">Agent is thinking...</span>';
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '...'; }
+
+  // Build context from both the draft and any enhanced content
+  let context = document.getElementById('studioInput')?.value || '';
+  if (Object.keys(enhancedContent).length) {
+    context += '\n\n--- ENHANCED VERSIONS ---\n';
+    for (const [p, text] of Object.entries(enhancedContent)) {
+      context += `\n[${p.toUpperCase()}]:\n${text}\n`;
+    }
+  }
 
   try {
     const r = await apiFetch('/studio/chat', {
       method: 'POST',
-      body:   JSON.stringify({ message: msg, context: document.getElementById('studioInput')?.value }),
+      body: JSON.stringify({ message: msg, context }),
     });
     const data = await r.json();
-    reply.textContent = data.reply ?? 'No response from agent.';
+    // Render with line breaks preserved
+    const text = data.reply ?? 'No response from agent.';
+    reply.innerHTML = `<div style="white-space:pre-wrap;font-size:14px;line-height:1.6;color:var(--text-1);">${esc(text)}</div>`;
+    input.value = '';
   } catch {
-    reply.textContent = 'Agent unreachable.';
+    reply.innerHTML = '<span style="color:#ff4d4f;">Agent unreachable. Try again.</span>';
+  } finally {
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '\u2192'; }
   }
 }
 
