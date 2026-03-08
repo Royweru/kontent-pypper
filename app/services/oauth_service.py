@@ -11,7 +11,7 @@ import httpx
 import logging
 from typing import Dict, Optional, Tuple
 from datetime import datetime, timedelta
-from urllib.parse import urlencode, quote
+from urllib.parse import urlencode, quote, parse_qsl
 from jose import jwt, JWTError
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,7 +75,7 @@ class OAuthService:
 
     @classmethod
     async def _initiate_oauth1(cls, user_id: int, platform: str, config: dict) -> str:
-        """OAuth 1.0a (Twitter) request token fetching without heavy libraries."""
+        """ OAuth 1.0a (Twitter) request token fetching without heavy libraries."""
         import uuid
         import hmac
 
@@ -110,7 +110,7 @@ class OAuthService:
             raise HTTPException(500, "Failed to get OAuth1 request token")
 
         # Parse token string like "oauth_token=XYZ&oauth_token_secret=ABC..."
-        data = dict(urllib.parse.parse_qsl(resp.text))
+        data = dict(parse_qsl(resp.text))
         oauth_token = data.get("oauth_token")
         oauth_secret = data.get("oauth_token_secret")
         
