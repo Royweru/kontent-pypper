@@ -11,19 +11,34 @@ from passlib.context import CryptContext
 
 from app.core.config import settings
 
+import hashlib
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-# ── Password Hashing ──────────────────────────────────────────────
+def _prehash(plain: str) -> str:
+    """SHA-256 pre-hash to bypass bcrypt's 72-byte limit.
+    Always produces a 64-char hex string."""
+    return hashlib.sha256(plain.encode("utf-8")).hexdigest()
+
+
+# -- Password Hashing ---------------------------------------------------------
 
 def hash_password(plain: str) -> str:
-    """Return bcrypt hash of a plain-text password."""
-    return pwd_context.hash(plain)
+    """Return bcrypt hash of a SHA-256 pre-hashed password."""
+    return pwd_context.hash(_prehash(plain))
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    """Return True if plain matches the stored bcrypt hash."""
-    return pwd_context.verify(plain, hashed)
+    """Verify plain text against stored bcrypt hash (SHA-256 pre-hashed)."""
+    # Try SHA-256 pre-hash first (new flow)
+    if pwd_context.verify(_prehash(plain), hashed):
+        return True
+    # Fall back to raw verify for any passwords hashed before this change
+    try:
+        return pwd_context.verify(plain, hashed)
+    except Exception:
+        return False
 
 
 # ── JWT Tokens ────────────────────────────────────────────────────
