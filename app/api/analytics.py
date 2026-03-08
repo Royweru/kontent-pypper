@@ -76,7 +76,7 @@ async def get_post_analytics(
         select(PostAnalytics)
         .join(Post, PostAnalytics.post_id == Post.id)
         .where(Post.user_id == user.id)
-        .order_by(desc(PostAnalytics.created_at))
+        .order_by(desc(PostAnalytics.fetched_at))
         .limit(min(limit, 100))
         .offset(offset)
     )

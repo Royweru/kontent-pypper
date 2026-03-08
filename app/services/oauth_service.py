@@ -198,7 +198,7 @@ class OAuthService:
         cls, platform: str, config: dict, db: AsyncSession,
         oauth_token: str, oauth_verifier: str
     ) -> dict:
-        import uuid, hmac, urllib
+        import uuid, hmac, urllib.parse
         
         state_data = _oauth1_states.pop(oauth_token, None)
         if not state_data:
@@ -239,7 +239,21 @@ class OAuthService:
         final_access = tokens.get("oauth_token")
         final_secret = tokens.get("oauth_token_secret")
 
-        user_info = await PLATFORMS[platform].get_user_info(final_access, token_secret=final_secret)
+        # Twitter's access_token response already includes user_id and screen_name
+        # so we use those directly instead of making a separate API call
+        # (the v2/users/me endpoint requires precise OAuth signing that is fragile)
+        user_info = {
+            "id": str(tokens.get("user_id", "")),
+            "username": tokens.get("screen_name", "Unknown"),
+        }
+
+        # Optionally try to get richer profile data, but fall back gracefully
+        try:
+            rich_info = await PLATFORMS[platform].get_user_info(final_access, token_secret=final_secret)
+            if rich_info and rich_info.get("username"):
+                user_info = rich_info
+        except Exception as e:
+            logger.warning("[OAuth] Could not fetch rich Twitter profile, using token data: %s", e)
 
         return await cls._save_db(db, user_id, platform, protocol="oauth1", 
                            access_token=f"{final_access}:{final_secret}", 

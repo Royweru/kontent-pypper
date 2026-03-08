@@ -126,3 +126,19 @@ async def oauth_callback(
     else:
         err_msg = result.get("error", "unknown_error")
         return HTMLResponse(_build_callback_html(False, platform, err_msg))
+
+
+@router.delete("/disconnect/{platform}")
+async def disconnect_platform(
+    platform: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove a social platform connection for the current user."""
+    stmt = delete(SocialConnection).where(
+        SocialConnection.user_id == current_user.id,
+        SocialConnection.platform == platform,
+    )
+    await db.execute(stmt)
+    await db.commit()
+    return {"success": True, "message": f"Disconnected {platform}"}
