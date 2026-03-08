@@ -44,6 +44,7 @@ feedparser>=6.0.0
 # -- Media Processing --------------------------------------------------
 Pillow>=10.0.0
 moviepy>=1.0.3
+imageio-ffmpeg>=0.4.9
 edge-tts>=6.1.0
 
 # -- Notifications -----------------------------------------------------

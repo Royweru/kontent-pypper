@@ -57,6 +57,11 @@ class TwitterService(BasePlatformService):
         extra_params: dict = None,
     ) -> str:
         """Generate OAuth 1.0a HMAC-SHA1 Authorization header."""
+        # Separate base URL from query string
+        parsed_url = urllib.parse.urlparse(url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
+        query_params = dict(urllib.parse.parse_qsl(parsed_url.query))
+
         params = {
             "oauth_consumer_key":     self.api_key,
             "oauth_nonce":            uuid.uuid4().hex,
@@ -68,15 +73,19 @@ class TwitterService(BasePlatformService):
         if extra_params:
             params.update(extra_params)
 
+        # Base signature demands queryparams + authparams sorted together
+        sig_params = params.copy()
+        sig_params.update(query_params)
+
         # Build base string
         sorted_params = "&".join(
             f"{urllib.parse.quote(k, safe='')}"
             f"={urllib.parse.quote(str(v), safe='')}"
-            for k, v in sorted(params.items())
+            for k, v in sorted(sig_params.items())
         )
         base = "&".join([
             method.upper(),
-            urllib.parse.quote(url, safe=""),
+            urllib.parse.quote(base_url, safe=""),
             urllib.parse.quote(sorted_params, safe=""),
         ])
 

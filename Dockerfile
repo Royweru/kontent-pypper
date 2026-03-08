@@ -10,11 +10,19 @@ ENV PYTHONDONTWRITEBYTECODE 1
 # Prevent Python from buffering stdout and stderr
 ENV PYTHONUNBUFFERED 1
 
-# Install system dependencies necessary for some Python packages (e.g. asyncpg/psycopg2)
+# Install system dependencies necessary for Python packages and Video processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
+    ffmpeg \
+    imagemagick \
+    ghostscript \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
+
+# Imagemagick has a security policy that blocks some text rendering by default. 
+# We remove the policy file to allow moviepy's TextClip to work.
+RUN sed -i '/<policy domain="path" rights="none" pattern="@\*"/d' /etc/ImageMagick-6/policy.xml || true
 
 # Install dependencies
 COPY requirements.txt .

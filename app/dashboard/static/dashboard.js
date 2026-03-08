@@ -204,27 +204,58 @@ async function loadPostHistory() {
 }
 
 // ── Platform connections ──────────────────────────────────────────
+let connectedPlatforms = [];
+
 async function renderPlatforms() {
   const grid = document.getElementById('platformsGrid');
   if (!grid) return;
 
-  let connected = [];
   try {
     const r = await apiFetch('/social/connections');
-    if (r.ok) connected = (await r.json()).map(c => c.platform?.toLowerCase() ?? '');
+    if (r.ok) {
+      connectedPlatforms = (await r.json()).map(c => c.platform?.toLowerCase() ?? '');
+    }
   } catch {}
 
-  document.getElementById('stat-platforms').textContent = connected.length;
+  document.getElementById('stat-platforms').textContent = connectedPlatforms.length;
 
   grid.innerHTML = PLATFORMS.map(p => {
-    const isOn = connected.some(c => c.includes(p.id));
-    return `
-      <div class="platform-tile ${isOn ? 'connected' : ''}" onclick="connectPlatform('${p.id}')">
-        <div class="pt-icon">${p.emoji}</div>
-        <div class="pt-name">${p.name}</div>
-        <div class="pt-state ${isOn ? 'on' : ''}">${isOn ? '● CONNECTED' : '○ NOT CONNECTED'}</div>
-      </div>`;
+    const isOn = connectedPlatforms.some(c => c.includes(p.id));
+    if (isOn) {
+      return `
+        <div class="platform-tile connected" style="cursor:default;">
+          <div class="pt-icon">${p.emoji}</div>
+          <div class="pt-name">${p.name}</div>
+          <div class="pt-state on">● CONNECTED</div>
+          <button class="btn-ghost" style="margin-top:10px; font-size:11px; padding:4px 8px; color:var(--danger);" onclick="disconnectPlatform('${p.id}')">Disconnect</button>
+        </div>`;
+    } else {
+      return `
+        <div class="platform-tile" onclick="connectPlatform('${p.id}')">
+          <div class="pt-icon">${p.emoji}</div>
+          <div class="pt-name">${p.name}</div>
+          <div class="pt-state">○ NOT CONNECTED</div>
+        </div>`;
+    }
   }).join('');
+  
+  renderPlatformToggles(); // Re-render studio toggles to disable unconnected ones
+}
+
+async function disconnectPlatform(pid) {
+  if (!confirm(`Are you sure you want to disconnect ${pid}?`)) return;
+  try {
+    const r = await apiFetch(`/social/disconnect/${pid}`, { method: 'DELETE' });
+    if (r.ok) {
+      toast(`Disconnected from ${pid}`, 'success');
+      renderPlatforms();
+      loadOverview();
+    } else {
+      toast('Failed to disconnect', 'error');
+    }
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
 }
 
 async function connectPlatform(pid) {
@@ -349,11 +380,35 @@ async function runReflection() {
 function renderPlatformToggles() {
   const container = document.getElementById('platformToggles');
   if (!container) return;
-  container.innerHTML = PLATFORMS.map(p =>
-    `<span class="ptoggle" data-platform="${p.id}">${p.emoji} ${p.name}</span>`
-  ).join('');
+  
+  // Automatically fetch connections if not loaded yet
+  if (!connectedPlatforms.length) {
+    apiFetch('/social/connections')
+      .then(r => r.json())
+      .then(data => {
+         connectedPlatforms = data.map(c => c.platform?.toLowerCase() ?? '');
+         // Call again once data is here
+         renderPlatformToggles();
+      }).catch(e => console.error(e));
+    return;
+  }
+
+  container.innerHTML = PLATFORMS.map(p => {
+    const isConnected = connectedPlatforms.includes(p.id);
+    const disabledClass = isConnected ? '' : 'disabled';
+    const clickAttr = isConnected ? '' : 'disabled';
+    
+    return `<span class="ptoggle ${disabledClass}" data-platform="${p.id}" title="${isConnected ? '' : 'Connect ' + p.name + ' in Connections tab'}">${p.emoji} ${p.name}</span>`
+  }).join('');
+  
   container.querySelectorAll('.ptoggle').forEach(el => {
-    el.addEventListener('click', () => el.classList.toggle('on'));
+    el.addEventListener('click', () => {
+      if (el.classList.contains('disabled')) {
+        toast(`Please connect ${el.textContent.trim()} in the Connections tab first`, 'warning');
+        return;
+      }
+      el.classList.toggle('on');
+    });
   });
 }
 
