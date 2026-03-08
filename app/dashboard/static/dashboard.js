@@ -204,7 +204,7 @@ async function loadPostHistory() {
 }
 
 // ── Platform connections ──────────────────────────────────────────
-let connectedPlatforms = [];
+let connectedPlatforms = null;
 
 async function renderPlatforms() {
   const grid = document.getElementById('platformsGrid');
@@ -217,10 +217,10 @@ async function renderPlatforms() {
     }
   } catch {}
 
-  document.getElementById('stat-platforms').textContent = connectedPlatforms.length;
+  document.getElementById('stat-platforms').textContent = connectedPlatforms?.length || 0;
 
   grid.innerHTML = PLATFORMS.map(p => {
-    const isOn = connectedPlatforms.some(c => c.includes(p.id));
+    const isOn = (connectedPlatforms || []).some(c => c.includes(p.id));
     if (isOn) {
       return `
         <div class="platform-tile connected" style="cursor:default;">
@@ -382,7 +382,7 @@ function renderPlatformToggles() {
   if (!container) return;
   
   // Automatically fetch connections if not loaded yet
-  if (!connectedPlatforms.length) {
+  if (connectedPlatforms === null) {
     apiFetch('/social/connections')
       .then(r => r.json())
       .then(data => {
@@ -542,9 +542,17 @@ async function agentChat() {
       body: JSON.stringify({ message: msg, context }),
     });
     const data = await r.json();
-    // Render with line breaks preserved
     const text = data.reply ?? 'No response from agent.';
-    reply.innerHTML = `<div style="white-space:pre-wrap;font-size:14px;line-height:1.6;color:var(--text-1);">${esc(text)}</div>`;
+    
+    // Check if marked is available (we added it via CDN), use it, otherwise fallback
+    let renderedHtml = text;
+    if (typeof marked !== 'undefined') {
+      renderedHtml = marked.parse(text);
+    } else {
+      renderedHtml = `<div style="white-space:pre-wrap;">${esc(text)}</div>`;
+    }
+    
+    reply.innerHTML = `<div class="agent-msg-content" style="font-size:14px;line-height:1.6;color:var(--text-1);">${renderedHtml}</div>`;
     input.value = '';
   } catch {
     reply.innerHTML = '<span style="color:#ff4d4f;">Agent unreachable. Try again.</span>';

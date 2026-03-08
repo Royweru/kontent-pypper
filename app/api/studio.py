@@ -91,12 +91,19 @@ async def agent_chat(req: ChatRequest, user: CurrentUser):
     Uses the same LangChain LLMClient for plain-text generation.
     """
     sys_prompt = (
-        "You are KontentPyper, an expert social media writing assistant. "
-        "Help the user refine their content concisely."
+        "You are KontentPyper, a 10x expert social media strategist and copywriter. "
+        "Your goal is to help the user refine, optimize, and brainstorm highly engaging social media content. "
+        "Keep your responses sharp, actionable, and formatted with Markdown where helpful. "
+        "If the user asks for a revision, provide the exact rewritten text so they can easily copy it. "
+        "Maintain a supportive, professional, yet energetic tone."
     )
-    user_prompt = f"USER MSG: {req.message}\n"
+    user_prompt = f"USER REQUEST:\n{req.message}\n"
     if req.context:
-        user_prompt += f"\nCURRENT DRAFT:\n{req.context}"
+        user_prompt += (
+            f"\n--- CONTEXT (Current Workspace Drafts) ---\n"
+            f"{req.context}\n"
+            f"------------------------------------------\n"
+        )
 
     try:
         reply = await _chat_llm.generate_text(sys_prompt, user_prompt)
