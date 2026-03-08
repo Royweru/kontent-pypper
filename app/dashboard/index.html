@@ -7,6 +7,8 @@
   <link rel="icon" type="image/png" href="/logo.png" />
   <link rel="stylesheet" href="/dashboard/static/design-system.css" />
   <link rel="stylesheet" href="/dashboard/static/dashboard.css" />
+  <link rel="stylesheet" href="/dashboard/static/studio-modal.css" />
+  <link rel="stylesheet" href="/dashboard/static/carousel.css" />
 </head>
 <body>
 
@@ -134,10 +136,14 @@
         <div class="section-header">
           <span class="section-title">Recent Activity</span>
         </div>
-        <div class="feed" id="recentFeed">
-          <div class="skeleton" style="height:52px; margin:4px 0;"></div>
-          <div class="skeleton" style="height:52px; margin:4px 0;"></div>
-          <div class="skeleton" style="height:52px; margin:4px 0;"></div>
+        <div class="feed" id="recentFeed" style="display:none;"></div> <!-- hidden legacy element -->
+        <div class="posts-carousel-container" id="postsCarouselContainer">
+          <div class="posts-carousel" id="postsCarousel">
+            <!-- Carousel items will be injected by JS -->
+            <div class="skeleton" style="width:300px; height:180px; flex-shrink:0; border-radius:12px;"></div>
+            <div class="skeleton" style="width:300px; height:180px; flex-shrink:0; border-radius:12px;"></div>
+            <div class="skeleton" style="width:300px; height:180px; flex-shrink:0; border-radius:12px;"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -148,70 +154,112 @@
   <section class="page" id="page-studio" aria-label="Studio">
 
     <div class="section-header" style="margin-bottom:20px;">
-      <span class="glow-label">Mini Studio</span>
-      <span class="muted" style="font-size:12px;">Write once — publish everywhere</span>
+      <span class="glow-label">AI Studio</span>
+      <span class="muted" style="font-size:12px;">Write once — generate for everywhere</span>
     </div>
 
-    <div class="studio-grid">
-
-      <!-- Input -->
-      <div>
-        <div class="studio-card" style="margin-bottom:12px;">
-          <h3>01 · Content Input</h3>
-          <textarea id="studioInput" rows="7" placeholder="Paste your idea, article URL, or raw notes. KontentPyper will adapt it for every platform you select..."></textarea>
-
-          <div style="margin-top:14px;">
-            <div class="section-title" style="margin-bottom:8px;">Target platforms</div>
-            <div class="toggle-row" id="platformToggles"></div>
-          </div>
-
-          <button class="btn-primary" id="enhanceBtn" onclick="enhanceContent()">
-            ✦ ENHANCE WITH AI
-          </button>
-        </div>
-
-        <div class="studio-card">
-          <h3>02 · Attach Media</h3>
-          <div class="drop-zone" id="dropZone" onclick="document.getElementById('mediaInput').click()"
-               role="button" tabindex="0" aria-label="Upload media file">
-            <div class="drop-icon" aria-hidden="true">⊡</div>
-            <div class="drop-label">Drop file or <span class="accent-text">browse</span></div>
-            <div class="drop-hint">MP4 · MOV · JPG · PNG — max 512 MB</div>
-          </div>
-          <input type="file" id="mediaInput" accept="video/*,image/*" style="display:none"
-                 onchange="handleMediaSelect(this)" aria-hidden="true" />
-          <div id="mediaPreview"></div>
-        </div>
-      </div>
-
-      <!-- Preview + agent -->
-      <div>
-        <div class="studio-card" style="margin-bottom:12px;">
-          <h3>03 · Preview</h3>
-          <div class="preview-tabs" id="previewTabs"></div>
-          <div class="preview-content" id="previewContent">
-            Enhanced content will appear here after clicking "Enhance with AI"...
-          </div>
-          <button class="btn-primary" id="publishBtn" onclick="publishContent()">
-            ↑ PUBLISH NOW
-          </button>
-          <button class="btn-ghost" onclick="toast('Schedule feature coming in Phase 7', 'warning')">
-            ◷ SCHEDULE FOR LATER
-          </button>
-        </div>
-
-        <div class="studio-card">
-          <h3>04 · Ask the Agent</h3>
-          <div class="chat-input-row">
-            <input type="text" id="chatInput" placeholder="e.g. Make it more punchy..." />
-            <button class="chat-send-btn" onclick="agentChat()" aria-label="Send">→</button>
-          </div>
-          <div class="agent-reply" id="agentReply"></div>
-        </div>
-      </div>
-
+    <!-- Empty State / Launchpad -->
+    <div style="margin-top: 40px; text-align: center; max-width: 400px; margin-left: auto; margin-right: auto;">
+      <div style="font-size: 48px; margin-bottom: 24px;">✦</div>
+      <h2 style="font-size: 20px; font-weight: 500; color: var(--text); margin-bottom: 12px; letter-spacing: -0.01em;">Create a New Post</h2>
+      <p style="font-size: 14px; color: var(--text-muted); line-height: 1.6; margin-bottom: 32px;">
+        Use KontentPyper's AI to break down your ideas into highly-optimized, format-perfect posts for every platform you've connected.
+      </p>
+      <button class="btn-primary" onclick="openStudioModal()" style="font-size: 14px; padding: 14px 24px; display: inline-flex; align-items: center; gap: 8px; width: auto; background: var(--white); color: var(--deep); box-shadow: 0 0 30px rgba(255,255,255,0.15);">
+        <span style="font-size:18px; line-height:0;">+</span> Start Writing
+      </button>
     </div>
+
   </section>
+
+  <!-- ── Studio Full-Screen Modal ──────────────────────────────── -->
+  <div class="studio-modal-overlay" id="studioModalOverlay">
+    <div class="studio-modal">
+      
+      <!-- Modal Header -->
+      <div class="studio-modal-header">
+        <div class="studio-modal-title">
+          <span style="color: var(--accent);">✦</span>
+          <span>Draft Post</span>
+        </div>
+        <button class="studio-modal-close" onclick="closeStudioModal()" aria-label="Close modal">×</button>
+      </div>
+
+      <!-- Modal Body (Split) -->
+      <div class="studio-modal-body">
+        
+        <!-- Left: Editor + Media -->
+        <div class="studio-editor-pane">
+          <textarea id="studioInput" class="studio-textarea" placeholder="Paste your idea, link, or raw thoughts here. The AI will adapt it for every platform..."></textarea>
+          
+          <!-- Unified Media & Platform Zone -->
+          <div class="studio-media-area">
+            <div class="toggle-row" id="platformToggles" style="margin-top:0; margin-bottom:16px;">
+              <!-- Javascript populates platforms here -->
+            </div>
+
+            <div class="studio-unified-drop" id="dropZone" onclick="document.getElementById('mediaInput').click()" role="button" tabindex="0">
+              <div class="studio-unified-icon">⇪</div>
+              <div style="flex: 1;">
+                <div class="studio-unified-text">Upload Image or Video</div>
+                <div style="font-size:11px; color:var(--text-dim); margin-top:2px;">MP4, MOV, JPG, PNG (Max 512MB)</div>
+              </div>
+              <div id="mediaPreview" style="display:flex; gap:8px;"></div>
+            </div>
+            <input type="file" id="mediaInput" accept="video/*,image/*" style="display:none" onchange="handleMediaSelect(this)" />
+          </div>
+        </div>
+
+        <!-- Right: Real-time Previews (Postiz Style) -->
+        <div class="studio-preview-pane">
+          <div class="preview-tabs-header" id="previewTabs">
+            <!-- Tabs like [X, LinkedIn] populated by JS -->
+          </div>
+          
+          <div class="preview-canvas" id="previewContent">
+            <!-- The CSS Mock Cards will go here -->
+            <div style="color:var(--text-dim); font-size:13px; margin-top:40px; text-align:center;">
+              Type in the editor to see your real-time preview...
+            </div>
+          </div>
+        </div>
+
+        <!-- Hidden Sliding Drawer: AI Copywriter -->
+        <div class="ai-drawer" id="aiDrawer">
+          <div class="ai-drawer-header">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--accent);">✦</span> AI Copywriter
+            </div>
+            <button class="ai-drawer-close" onclick="toggleAiDrawer()">×</button>
+          </div>
+          <div class="ai-drawer-messages" id="agentReply">
+            <div class="chat-bubble agent">Hi! I'm loaded with your analytics and profile context. Ask me to rewrite your draft, make it punchier, or change the tone.</div>
+          </div>
+          <div class="ai-drawer-input">
+            <div class="chat-input-row" style="margin-top:0;">
+              <input type="text" id="chatInput" placeholder="Ask AI to refine this..." onkeypress="if(event.key === 'Enter') agentChat()" />
+              <button class="chat-send-btn" onclick="agentChat()">→</button>
+            </div>
+          </div>
+        </div>
+
+      </div> <!-- /studio-modal-body -->
+
+      <!-- Modal Footer actions -->
+      <div class="studio-modal-footer">
+        <div class="studio-modal-footer-left">
+          <button class="ai-drawer-toggle" onclick="toggleAiDrawer()">
+            <span style="font-size:14px; line-height:0;">◂</span> Chat with AI
+          </button>
+        </div>
+        <div class="studio-modal-footer-right">
+          <button class="btn-ghost" onclick="toast('Scheduling coming soon', 'warning')" style="margin:0; width:auto; padding: 10px 16px;">Schedule</button>
+          <button class="btn-primary" id="publishBtn" onclick="publishContent()" style="margin:0; width:auto; padding: 10px 24px;">Publish Now</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
 
   <!-- ── Connections ───────────────────────────────────────────── -->
   <section class="page" id="page-connections" aria-label="Platform Connections">
@@ -358,6 +406,19 @@
   </section>
 
 </main>
+
+  <!-- ── Post Details Modal ────────────────────────────────────── -->
+  <div class="post-details-overlay" id="postDetailsOverlay">
+    <div class="post-details-modal">
+      <div class="post-details-header">
+        <h2>Post Details</h2>
+        <button class="studio-modal-close" onclick="closePostDetails()">×</button>
+      </div>
+      <div class="post-details-body" id="postDetailsBody">
+        <!-- Content injected by JS -->
+      </div>
+    </div>
+  </div>
 
 <!-- Toast stack -->
 <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>

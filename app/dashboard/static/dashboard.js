@@ -156,37 +156,59 @@ function renderBarChart() {
   ).join('');
 }
 
-// ── Post feed helpers ─────────────────────────────────────────────
-function buildPostCard(post) {
-  const pl   = PLATFORMS.find(p => (post.platform ?? '').toLowerCase().includes(p.id));
-  const icon = pl ? pl.emoji : '🌐';
-  const clr  = pl ? pl.color : '#64748b';
-  const st   = post.status === 'published' ? 'pub' : post.status === 'scheduled' ? 'sched' : 'fail';
-  const lbl  = { pub:'PUBLISHED', sched:'SCHEDULED', fail:'FAILED' }[st];
+// ── Posts Carousel & History ────────────────────────────────────────
+
+function buildCarouselCard(post) {
+  const plIcons = post.platforms.map(pid => {
+    const pl = PLATFORMS.find(p => pid.toLowerCase().includes(p.id));
+    return pl ? `<div class="carousel-platform-icon" style="color:${pl.color};">${pl.emoji}</div>` : '';
+  }).join('');
+  
   const when = post.created_at ? new Date(post.created_at).toLocaleDateString() : '';
+  const overallStatus = post.status.toLowerCase();
+  
+  // Try to find a media preview
+  let mediaPreview = '';
+  if (post.image_urls) {
+    const urls = post.image_urls.split(',');
+    mediaPreview = `<img src="${urls[0]}" class="carousel-card-media-preview" alt="preview">`;
+  } else if (post.video_urls) {
+    const urls = post.video_urls.split(',');
+    mediaPreview = `<video src="${urls[0]}" class="carousel-card-media-preview"></video>`;
+  }
 
   return `
-    <div class="feed-item">
-      <div class="feed-dot" style="background:${clr};"></div>
-      <div class="feed-body">
-        <div class="feed-text trunc">${esc(post.original_content ?? '')}</div>
-        <div class="feed-meta">${pl?.name ?? post.platform ?? 'Unknown'} &nbsp;·&nbsp; ${when}</div>
+    <div class="carousel-card" onclick="openPostDetails(${post.id})">
+      <div class="carousel-card-header">
+        <div class="carousel-card-platforms">${plIcons || '<div class="carousel-platform-icon">🌐</div>'}</div>
+        <div class="carousel-card-date">${when}</div>
       </div>
-      <span class="feed-badge badge-${st}">${lbl}</span>
-    </div>`;
+      ${mediaPreview}
+      <div class="carousel-card-body">
+        ${esc(post.original_content ?? '')}
+      </div>
+      <div class="carousel-card-footer">
+        <span class="carousel-status-badge ${overallStatus}">${overallStatus}</span>
+        <span style="font-size:16px; color:var(--text-muted);">→</span>
+      </div>
+    </div>
+  `;
 }
 
 async function loadRecentPosts() {
-  const el = document.getElementById('recentFeed');
+  const cCont = document.getElementById('postsCarousel');
+  if (!cCont) return;
   try {
-    const r = await apiFetch('/social/posts?limit=6');
-    if (!r.ok) { el.innerHTML = `<div class="empty-state">No posts yet</div>`; return; }
+    const r = await apiFetch('/posts?limit=10');
+    if (!r.ok) throw new Error('API issue');
     const posts = await r.json();
-    el.innerHTML = posts.length
-      ? posts.map(buildPostCard).join('')
-      : `<div class="empty-state">No posts yet — head to the Studio</div>`;
-  } catch {
-    el.innerHTML = `<div class="empty-state">Could not load posts</div>`;
+    if (!posts.length) {
+      cCont.innerHTML = `<div class="empty-state" style="width:100%; border:1px dashed var(--border); border-radius:12px; padding:40px;">No posts yet — head to the Studio</div>`;
+      return;
+    }
+    cCont.innerHTML = posts.map(buildCarouselCard).join('');
+  } catch (e) {
+    cCont.innerHTML = `<div class="empty-state" style="width:100%;">Could not load posts: ${e.message}</div>`;
   }
 }
 
@@ -194,14 +216,98 @@ async function loadPostHistory() {
   const el = document.getElementById('postHistoryFeed');
   if (!el) return;
   try {
-    const r = await apiFetch('/social/posts?limit=50');
+    const r = await apiFetch('/posts?limit=50');
     if (!r.ok) { el.innerHTML = `<div class="empty-state">No posts yet</div>`; return; }
     const posts = await r.json();
     el.innerHTML = posts.length
-      ? posts.map(buildPostCard).join('')
+      ? `<div class="posts-carousel-container" style="flex-wrap:wrap; display:flex; gap:16px;">${posts.map(buildCarouselCard).join('')}</div>` // Reuse the cards but wrap them
       : `<div class="empty-state">No posts yet</div>`;
   } catch {
     el.innerHTML = `<div class="empty-state">Could not load history</div>`;
+  }
+}
+
+// ── Post Details Modal ────────────────────────────────────────────
+function closePostDetails() {
+  const m = document.getElementById('postDetailsOverlay');
+  if (m) m.classList.remove('open');
+}
+
+async function openPostDetails(id) {
+  const m = document.getElementById('postDetailsOverlay');
+  const b = document.getElementById('postDetailsBody');
+  if (!m || !b) return;
+  
+  b.innerHTML = '<div class="skeleton" style="height:200px;"></div>';
+  m.classList.add('open');
+  
+  try {
+    const r = await apiFetch(`/posts/${id}`);
+    if (!r.ok) throw new Error('Could not fetch post details');
+    const post = await r.json();
+    
+    // Status badges
+    const resHtml = post.results.map(res => `
+      <div class="platform-result-item">
+        <div style="font-weight:600; display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px;">${PLATFORMS.find(p=>p.id===res.platform)?.emoji||'🌐'}</span>
+          <span style="text-transform:capitalize;">${res.platform}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          ${res.platform_post_url ? `<a href="${res.platform_post_url}" target="_blank" style="color:var(--accent); font-size:13px; font-weight:600;">View Post ↗</a>` : ''}
+          <span class="carousel-status-badge ${res.status.toLowerCase()}">${res.status}</span>
+        </div>
+        ${res.error_message ? `<div style="color:var(--danger); font-size:12px; margin-top:4px;">${esc(res.error_message)}</div>` : ''}
+      </div>
+    `).join('');
+    
+    // Analytics
+    const anHtml = post.analytics.map(an => `
+      <div class="meta-box">
+        <h4>${an.platform} Analytics</h4>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:14px;">
+          <div><span style="color:var(--text-dim);">Views</span><br><span class="mono">${an.views}</span></div>
+          <div><span style="color:var(--text-dim);">Likes</span><br><span class="mono">${an.likes}</span></div>
+          <div><span style="color:var(--text-dim);">Comments</span><br><span class="mono">${an.comments}</span></div>
+          <div><span style="color:var(--text-dim);">Shares</span><br><span class="mono">${an.shares}</span></div>
+        </div>
+      </div>
+    `).join('');
+    
+    // Media
+    let mediaHtml = '';
+    const imgUrls = post.image_urls ? post.image_urls.split(',') : [];
+    const vidUrls = post.video_urls ? post.video_urls.split(',') : [];
+    if (imgUrls.length || vidUrls.length) {
+      mediaHtml = '<div class="media-gallery">';
+      imgUrls.forEach(url => { if(url) mediaHtml += `<img src="${url}">` });
+      vidUrls.forEach(url => { if(url) mediaHtml += `<video src="${url}" controls></video>` });
+      mediaHtml += '</div>';
+    }
+
+    b.innerHTML = `
+      <div>
+        <h3 style="font-size:13px; text-transform:uppercase; color:var(--text-dim); margin-bottom:8px; letter-spacing:0.5px;">Original Request</h3>
+        <div style="background:var(--surface2); padding:16px; border-radius:var(--radius-sm); border:1px solid var(--border); white-space:pre-wrap; font-size:15px; line-height:1.5;">${esc(post.original_content)}</div>
+      </div>
+      
+      ${mediaHtml}
+      
+      <div>
+        <h3 style="font-size:13px; text-transform:uppercase; color:var(--text-dim); margin-bottom:8px; letter-spacing:0.5px;">Platform Status</h3>
+        ${resHtml || '<div class="muted">No platform results yet.</div>'}
+      </div>
+      
+      ${anHtml ? `
+      <div>
+        <h3 style="font-size:13px; text-transform:uppercase; color:var(--text-dim); margin-bottom:8px; letter-spacing:0.5px;">Performance</h3>
+        <div class="post-meta-grid">${anHtml}</div>
+      </div>
+      ` : ''}
+    `;
+    
+  } catch (e) {
+    b.innerHTML = `<div class="empty-state" style="color:var(--danger);">${e.message}</div>`;
   }
 }
 
@@ -256,13 +362,42 @@ async function loadNewsFeed() {
   }
 }
 
+// ── Studio Modal & State ──────────────────────────────────────────
+function openStudioModal(initialText = '') {
+  const modal = document.getElementById('studioModalOverlay');
+  if (modal) {
+    modal.classList.add('open');
+    const input = document.getElementById('studioInput');
+    if (input) {
+      if (initialText) input.value = initialText;
+      input.focus();
+    }
+  }
+}
+
+function closeStudioModal() {
+  const modal = document.getElementById('studioModalOverlay');
+  if (modal) {
+    modal.classList.remove('open');
+  }
+  // Automatically close the AI drawer if open
+  const drawer = document.getElementById('aiDrawer');
+  if (drawer && drawer.classList.contains('open')) {
+    drawer.classList.remove('open');
+  }
+}
+
+function toggleAiDrawer() {
+  const drawer = document.getElementById('aiDrawer');
+  if (drawer) {
+    drawer.classList.toggle('open');
+  }
+}
+
 function sendNewsToStudio(title, url) {
   const content = `Trending topic: ${title}\n\nSource link: ${url}\n\nPlease adapt this into a compelling post.`;
-  const input = document.getElementById('studioInput');
-  if (input) {
-      input.value = content;
-  }
-  navigate('studio');
+  navigate('studio'); // go to the launchpad background page
+  openStudioModal(content); // open the modal overlay directly
   toast('News imported to Studio', 'success');
 }
 
@@ -509,27 +644,162 @@ async function enhanceContent() {
   }
 }
 
-// ── Studio: preview ───────────────────────────────────────────────
+// ── Studio: Real-Time Previews (Postiz Style) ───────────────────────
+function bindRealTimePreview() {
+  const input = document.getElementById('studioInput');
+  if (input) {
+    // When the user types, clear the AI enhanced state and 
+    // force the preview to render their raw keystrokes in real-time.
+    input.addEventListener('input', () => {
+      // If they type manually, we invalidate the AI enhanced version to 
+      // show them exactly what they are typing.
+      enhancedContent = {};
+      const activePlatformTab = document.querySelector('.preview-platform-tab.active');
+      const activePlatform = activePlatformTab ? activePlatformTab.dataset.platform : 'twitter';
+      renderPreview(activePlatform);
+    });
+  }
+}
+
+// Call this once on load
+document.addEventListener('DOMContentLoaded', bindRealTimePreview);
+
 function renderPreview(activePlatform) {
   const tabs = document.getElementById('previewTabs');
-  const box  = document.getElementById('previewContent');
-  if (!tabs || !box) return;
+  const canvas = document.getElementById('previewContent');
+  if (!tabs || !canvas) return;
 
   const selected = getSelectedPlatforms();
+  
+  // If no platforms are selected, show empty state
+  if (!selected.length) {
+    tabs.innerHTML = '';
+    canvas.innerHTML = '<div style="color:var(--text-dim); font-size:13px; margin-top:40px; text-align:center;">Select a platform to see your real-time preview...</div>';
+    return;
+  }
+
+  // Ensure an active platform exists in the selected list
+  if (!selected.includes(activePlatform)) {
+    activePlatform = selected[0];
+  }
+
+  // Render Tabs
   tabs.innerHTML = selected.map(pid => {
     const p = PLATFORMS.find(x => x.id === pid);
-    return `<button class="preview-tab ${pid === activePlatform ? 'active' : ''}"
+    return `<button class="preview-platform-tab ${pid === activePlatform ? 'active' : ''}" 
+             data-platform="${pid}"
              onclick="switchTab('${pid}')">${p?.emoji ?? ''} ${p?.name ?? pid}</button>`;
   }).join('');
 
-  box.textContent = enhancedContent[activePlatform] ?? '(No output for this platform)';
+  // Determine what text to render: either the specific AI enhanced draft, or the raw input.
+  const rawText = document.getElementById('studioInput')?.value || '';
+  const textToRender = enhancedContent[activePlatform] !== undefined ? enhancedContent[activePlatform] : rawText;
+
+  // Render the specific High-Fidelity Mock Card
+  if (activePlatform === 'twitter') {
+    canvas.innerHTML = buildTwitterMock(textToRender);
+  } else if (activePlatform === 'linkedin') {
+    canvas.innerHTML = buildLinkedInMock(textToRender);
+  } else {
+    // Generic fallback for others
+    canvas.innerHTML = `<div class="mock-card"><div style="white-space:pre-wrap;">${esc(textToRender) || 'Start typing...'}</div></div>`;
+  }
 }
 
 function switchTab(pid) {
-  document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'));
-  event.target.classList.add('active');
-  const box = document.getElementById('previewContent');
-  if (box) box.textContent = enhancedContent[pid] ?? '(No output for this platform)';
+  renderPreview(pid);
+}
+
+function buildTwitterMock(text) {
+  const displayName = currentUser?.username || 'Creator';
+  const handle = currentUser ? currentUser.email.split('@')[0] : 'creator';
+  const safeText = esc(text) || 'What is happening?!';
+  
+  // Create dummy image if one is selected in unified dropzone
+  const mediaInput = document.getElementById('mediaInput');
+  let mediaHtml = '';
+  if (mediaInput && mediaInput.files && mediaInput.files[0]) {
+    const file = mediaInput.files[0];
+    const url = URL.createObjectURL(file);
+    if (file.type.startsWith('video/')) {
+      mediaHtml = `<video src="${url}" style="width:100%; border-radius:16px; margin-top:12px; border:1px solid #2f3336;" controls></video>`;
+    } else {
+      mediaHtml = `<img src="${url}" style="width:100%; border-radius:16px; margin-top:12px; border:1px solid #2f3336;" />`;
+    }
+  }
+
+  return `
+    <div class="mock-card mock-x">
+      <div class="mock-x-header">
+        <div class="mock-x-avatar" style="display:flex;align-items:center;justify-content:center;background:var(--accent);color:var(--deep);font-weight:bold;">${displayName.charAt(0)}</div>
+        <div style="display:flex; flex-direction:column;">
+          <div style="display:flex; align-items:center; gap:4px;">
+            <div class="mock-x-name">${esc(displayName)}</div>
+            <svg viewBox="0 0 24 24" aria-label="Verified account" role="img" style="width:16px;height:16px;fill:#1d9bf0;"><g><path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.998-3.918-3.998-.47 0-.92.084-1.336.25C14.818 2.415 13.51 1.5 12 1.5s-2.816.917-3.337 2.25c-.416-.165-.866-.25-1.336-.25-2.21 0-3.918 1.792-3.918 4 0 .495.084.965.238 1.4-1.273.65-2.148 2.02-2.148 3.6 0 1.46.74 2.746 1.867 3.45-.032.22-.05.45-.05.68 0 2.21 1.71 3.998 3.918 3.998.47 0 .92-.084 1.336-.25C9.182 21.585 10.49 22.5 12 22.5s2.816-.917 3.337-2.25c.416.165.866.25 1.336.25 2.21 0 3.918-1.792 3.918-4 0-.23-.018-.46-.05-.68 1.126-.704 1.867-1.99 1.867-3.45zm-10.44 3.73l-4.226-4.225 1.414-1.414 2.81 2.81 7.026-8.192 1.536 1.228-8.56 9.794z"></path></g></svg>
+          </div>
+          <div class="mock-x-handle">@${esc(handle)}</div>
+        </div>
+      </div>
+      <div class="mock-x-body">${safeText}</div>
+      ${mediaHtml}
+      <div style="display:flex; justify-content:space-between; color:#71767b; font-size:13px; margin-top:16px; border-top:1px solid #2f3336; padding-top:12px;">
+        <span>💬 0</span>
+        <span>🔁 0</span>
+        <span>❤️ 0</span>
+        <span>📊 0</span>
+      </div>
+    </div>
+  `;
+}
+
+function buildLinkedInMock(text) {
+  const displayName = currentUser?.username || 'Creator Professional';
+  const bio = currentUser?.bio || 'Building the future of AI automation.';
+  const safeText = esc(text) || 'Start a post...';
+  
+  // LinkedIn has a very specific truncation logic (~210 chars before '...see more')
+  let displayText = safeText;
+  let isTruncated = false;
+  if (displayText.length > 210) {
+    displayText = displayText.substring(0, 210) + '...';
+    isTruncated = true;
+  }
+
+  // Create dummy image if one is selected
+  const mediaInput = document.getElementById('mediaInput');
+  let mediaHtml = '';
+  if (mediaInput && mediaInput.files && mediaInput.files[0]) {
+    const file = mediaInput.files[0];
+    const url = URL.createObjectURL(file);
+    if (file.type.startsWith('video/')) {
+      mediaHtml = `<video src="${url}" style="width:100%; margin-top:12px; max-height:400px; object-fit:cover;" controls></video>`;
+    } else {
+      mediaHtml = `<img src="${url}" style="width:100%; margin-top:12px; max-height:400px; object-fit:cover;" />`;
+    }
+  }
+
+  return `
+    <div class="mock-card mock-li">
+      <div class="mock-li-header">
+        <div class="mock-li-avatar" style="display:flex;align-items:center;justify-content:center;background:#fff;color:var(--deep);font-weight:bold;">${displayName.charAt(0)}</div>
+        <div style="display:flex; flex-direction:column; line-height:1.2;">
+          <div class="mock-li-name">${esc(displayName)}</div>
+          <div class="mock-li-bio">${esc(bio).substring(0, 50)}</div>
+          <div class="mock-li-bio" style="font-size:11px; margin-top:2px;">Just now • 🌐</div>
+        </div>
+      </div>
+      <div class="mock-li-body">
+        ${displayText}
+        ${isTruncated ? `<span class="mock-li-truncate">see more</span>` : ''}
+      </div>
+      ${mediaHtml}
+      <div style="border-top:1px solid #38434f; margin-top:12px; padding-top:8px; display:flex; justify-content:space-around; color:#a0a0a0; font-size:12px; font-weight:600;">
+        <span>👍 Like</span>
+        <span>💬 Comment</span>
+        <span>🔁 Repost</span>
+      </div>
+    </div>
+  `;
 }
 
 // ── Studio: publish ───────────────────────────────────────────────
@@ -564,8 +834,10 @@ async function publishContent() {
       toast(`Published to ${data.successful}/${data.total_platforms} platforms`, 'success');
       enhancedContent = {};
       document.getElementById('studioInput').value = '';
-      document.getElementById('previewContent').textContent = 'Enhanced content will appear here...';
-      document.getElementById('previewTabs').innerHTML = '';
+      document.getElementById('previewContent').innerHTML = '<div style="color:var(--text-dim); text-align:center; margin-top:40px;">Type in the editor to see your real-time preview...</div>';
+      
+      // Close the modal
+      closeStudioModal();
       loadOverview();
     } else {
       toast(data.detail ?? 'Publish failed', 'error');
@@ -574,20 +846,30 @@ async function publishContent() {
     toast('Error: ' + e.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.textContent = '↑ PUBLISH NOW';
+    btn.textContent = 'Publish Now';
   }
 }
 
 // ── Studio: agent chat ────────────────────────────────────────────
 async function agentChat() {
   const input = document.getElementById('chatInput');
-  const reply = document.getElementById('agentReply');
+  const container = document.getElementById('agentReply');
   const sendBtn = input?.parentElement?.querySelector('.chat-send-btn');
-  const msg   = input?.value.trim();
-  if (!msg || !reply) return;
+  const msg = input?.value.trim();
+  
+  if (!msg || !container) return;
 
-  reply.style.display = 'block';
-  reply.innerHTML = '<span style="color:var(--primary);font-size:13px;">Agent is thinking...</span>';
+  // 1. Append User Message Bubble
+  container.innerHTML += `<div class="chat-bubble user">${esc(msg)}</div>`;
+  input.value = '';
+  
+  // Create an empty agent bubble for loading state
+  const thinkingId = 'agent-thinking-' + Date.now();
+  container.innerHTML += `<div class="chat-bubble agent" id="${thinkingId}"><span style="color:var(--primary); font-style:italic;">Agent is thinking...</span></div>`;
+  
+  // Scroll to bottom
+  container.scrollTop = container.scrollHeight;
+
   if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '...'; }
 
   // Build context from both the draft and any enhanced content
@@ -607,7 +889,6 @@ async function agentChat() {
     const data = await r.json();
     const text = data.reply ?? 'No response from agent.';
     
-    // Check if marked is available (we added it via CDN), use it, otherwise fallback
     let renderedHtml = text;
     if (typeof marked !== 'undefined') {
       renderedHtml = marked.parse(text);
@@ -615,12 +896,22 @@ async function agentChat() {
       renderedHtml = `<div style="white-space:pre-wrap;">${esc(text)}</div>`;
     }
     
-    reply.innerHTML = `<div class="agent-msg-content" style="font-size:14px;line-height:1.6;color:var(--text-1);">${renderedHtml}</div>`;
-    input.value = '';
-  } catch {
-    reply.innerHTML = '<span style="color:#ff4d4f;">Agent unreachable. Try again.</span>';
+    // Replace thinking bubble with actual response
+    const thinkingBubble = document.getElementById(thinkingId);
+    if (thinkingBubble) {
+      thinkingBubble.innerHTML = `<div class="agent-msg-content">${renderedHtml}</div>`;
+    } else {
+       container.innerHTML += `<div class="chat-bubble agent"><div class="agent-msg-content">${renderedHtml}</div></div>`;
+    }
+    
+  } catch (err) {
+    const thinkingBubble = document.getElementById(thinkingId);
+    if (thinkingBubble) {
+      thinkingBubble.innerHTML = `<span style="color:#ff4d4f;">Agent unreachable. Try again.</span>`;
+    }
   } finally {
-    if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '\u2192'; }
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '→'; }
+    container.scrollTop = container.scrollHeight;
   }
 }
 
@@ -630,9 +921,16 @@ function handleMediaSelect(input) {
   if (!file) return;
   const prev = document.getElementById('mediaPreview');
   const url  = URL.createObjectURL(file);
+  
+  // Render small thumbnail in the upload zone
   prev.innerHTML = file.type.startsWith('video/')
-    ? `<video src="${url}" controls style="width:100%; border-radius:6px; max-height:150px; margin-top:10px;"></video>`
-    : `<img  src="${url}" style="width:100%; border-radius:6px; max-height:150px; object-fit:cover; margin-top:10px;" alt="preview"/>`;
+    ? `<video src="${url}" controls style="border-radius:6px; max-height:48px; object-fit:cover;"></video>`
+    : `<img  src="${url}" style="border-radius:6px; max-height:48px; object-fit:cover;" alt="preview"/>`;
+    
+  // Force the Real-Time Preview panels on the right to re-render so they show the media in the mock cards
+  const activePlatformTab = document.querySelector('.preview-platform-tab.active');
+  const activePlatform = activePlatformTab ? activePlatformTab.dataset.platform : 'twitter';
+  renderPreview(activePlatform);
 }
 
 // Drop zone events
