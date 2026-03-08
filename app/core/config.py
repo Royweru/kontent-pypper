@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     # ── Social Platform: Twitter / X  (OAuth 1.0a) ───────────────
     TWITTER_API_KEY: str = ""
     TWITTER_API_SECRET: str = ""
-    TWITTER_BEARER_TOKEN: str = ""
-    TWITTER_CONSUMER_KEY: str = ""
+    TWITTER_CLIENT_ID: str = ""
+    TWITTER_CLIENT_SECRET: str = ""
 
     # ── Social Platform: LinkedIn (OAuth 2.0) ─────────────────────
     LINKEDIN_CLIENT_ID: str = ""
