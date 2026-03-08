@@ -27,6 +27,7 @@ class DraftRequest(BaseModel):
     platforms: List[str]
 
 class PublishRequest(BaseModel):
+    original_content: str
     platform_specific_content: Dict[str, str]
     platforms: List[str]
     image_urls: Optional[List[str]] = None
@@ -62,9 +63,25 @@ async def create_draft(req: DraftRequest, user: CurrentUser):
 @router.post("/publish", summary="Immediate Publish")
 async def publish_now(req: PublishRequest, user: CurrentUser, db: DB):
     """
-    Takes the finalized, AI-enhanced draft dictionary and broadcasts it
-    out via the SocialService orchestrator to connected platforms.
+    Takes the finalized, AI-enhanced draft dictionary, saves it to the database,
+    and broadcasts it out via the SocialService orchestrator to connected platforms.
     """
+    from app.models.post import Post, PostResult
+
+    # 1. Create the overarching Post record
+    new_post = Post(
+        user_id=user.id,
+        original_content=req.original_content,
+        enhanced_content=req.platform_specific_content,
+        image_urls=",".join(req.image_urls) if req.image_urls else None,
+        video_urls=",".join(req.video_urls) if req.video_urls else None,
+        platforms=",".join(req.platforms),
+        status="published",
+    )
+    db.add(new_post)
+    await db.flush() # Flush to get the ID
+
+    # 2. Transmit to platforms
     results = await SocialService.publish_post(
         db=db,
         user_id=user.id,
@@ -73,7 +90,28 @@ async def publish_now(req: PublishRequest, user: CurrentUser, db: DB):
         video_urls=req.video_urls,
     )
 
-    successful = sum(1 for r in results if r.success)
+    # 3. Save the results
+    successful = 0
+    for r in results:
+        status = "published" if r.success else "failed"
+        if r.success:
+            successful += 1
+            
+        post_result = PostResult(
+            post_id=new_post.id,
+            platform=r.platform,
+            status=status,
+            platform_post_url=r.post_url,
+            platform_post_id=r.post_id,
+            error_message=r.error_message,
+        )
+        db.add(post_result)
+        
+    # Mark overarching post as failed if no single platform succeeded
+    if successful == 0 and len(results) > 0:
+        new_post.status = "failed"
+
+    await db.commit()
 
     return {
         "success": successful > 0,

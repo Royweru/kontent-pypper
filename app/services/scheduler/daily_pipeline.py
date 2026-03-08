@@ -144,13 +144,45 @@ async def run_daily_pipeline(user_id: int):
         # ── 5. Publish ────────────────────────────────────────────────
         logger.info("[DailyPipeline] user_id=%s APPROVED! Publishing to %d platforms...", user_id, len(drafts))
 
+        from app.models.post import Post, PostResult
+        
+        new_post = Post(
+            user_id=user_id,
+            original_content=topic_text,
+            enhanced_content=drafts,
+            platforms=",".join(drafts.keys()),
+            status="published",
+        )
+        db.add(new_post)
+        await db.flush()
+
         results = await SocialService.publish_post(
             db=db,
             user_id=user_id,
             content_map=drafts,
         )
 
-        success_count = sum(1 for r in results if r.success)
+        success_count = 0
+        for r in results:
+            status = "published" if r.success else "failed"
+            if r.success:
+                success_count += 1
+            
+            post_result = PostResult(
+                post_id=new_post.id,
+                platform=r.platform,
+                status=status,
+                platform_post_url=r.post_url,
+                platform_post_id=r.post_id,
+                error_message=r.error_message,
+            )
+            db.add(post_result)
+        
+        if success_count == 0 and len(results) > 0:
+            new_post.status = "failed"
+            
+        await db.commit()
+
         logger.info(
             "[DailyPipeline] user_id=%s result: %d/%d platforms succeeded.",
             user_id, success_count, len(results),

@@ -827,7 +827,11 @@ async function publishContent() {
   try {
     const r = await apiFetch('/studio/publish', {
       method: 'POST',
-      body:   JSON.stringify({ platform_specific_content: contentMap, platforms: selected }),
+      body:   JSON.stringify({ 
+        original_content: raw,
+        platform_specific_content: contentMap, 
+        platforms: selected 
+      }),
     });
     const data = await r.json();
     if (r.ok) {
