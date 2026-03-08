@@ -51,6 +51,7 @@ Output the EXACT finalized text that will be posted without surrounding quotes o
         self.llm = LLMClient(
             api_key=settings.OPENAI_API_KEY,
             model="gpt-5-nano",
+          
         )
 
     async def enhance_draft(
@@ -77,7 +78,7 @@ Output the EXACT finalized text that will be posted without surrounding quotes o
             system_prompt=self.SYSTEM_PROMPT,
             user_prompt=user_prompt,
             response_model=EnhancedDraft,
-            temperature=0.7,
+            temperature=1.0
         )
 
         return draft
