@@ -100,6 +100,16 @@
   <!-- ── Overview ──────────────────────────────────────────────── -->
   <section class="page active" id="page-overview" aria-label="Overview">
 
+    <!-- Quick Actions -->
+    <div class="quick-actions-row" style="display: flex; gap: 12px; margin-bottom: 24px;">
+      <button class="btn-primary" onclick="openStudioModal()" style="display: inline-flex; align-items: center; gap: 8px; width: auto; font-size: 14px;">
+        <span>+</span> Create Post
+      </button>
+      <button class="btn-primary" onclick="openAutomateModal()" style="background: var(--lavender); color: var(--deep); display: inline-flex; align-items: center; gap: 8px; width: auto; font-size: 14px;">
+        <span>⚡</span> Automate Content from Scratch
+      </button>
+    </div>
+
     <!-- Stats -->
     <div class="stats-row">
       <div class="stat-card">
@@ -224,32 +234,16 @@
           </div>
         </div>
 
-        <!-- Hidden Sliding Drawer: AI Copywriter -->
-        <div class="ai-drawer" id="aiDrawer">
-          <div class="ai-drawer-header">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span style="color:var(--accent);">✦</span> AI Copywriter
-            </div>
-            <button class="ai-drawer-close" onclick="toggleAiDrawer()">×</button>
-          </div>
-          <div class="ai-drawer-messages" id="agentReply">
-            <div class="chat-bubble agent">Hi! I'm loaded with your analytics and profile context. Ask me to rewrite your draft, make it punchier, or change the tone.</div>
-          </div>
-          <div class="ai-drawer-input">
-            <div class="chat-input-row" style="margin-top:0;">
-              <input type="text" id="chatInput" placeholder="Ask AI to refine this..." onkeypress="if(event.key === 'Enter') agentChat()" />
-              <button class="chat-send-btn" onclick="agentChat()">→</button>
-            </div>
-          </div>
-        </div>
+        <!-- AI Copywriter was moved to root from here -->
 
       </div> <!-- /studio-modal-body -->
 
       <!-- Modal Footer actions -->
       <div class="studio-modal-footer">
         <div class="studio-modal-footer-left">
+          <!-- Chat logic will now open global drawer -->
           <button class="ai-drawer-toggle" onclick="toggleAiDrawer()">
-            <span style="font-size:14px; line-height:0;">◂</span> Chat with AI
+            <span style="font-size:14px; line-height:0;">✦</span> Ask AI Copywriter
           </button>
         </div>
         <div id="studioValidationErrors" style="display:none; color:#ff4d4f; font-size:12px; margin:0 16px; flex:1; text-align:right;"></div>
@@ -288,17 +282,35 @@
     </div>
   </section>
 
-  <!-- ── News Feed ──────────────────────────────────────────────── -->
+  <!-- ── News Feed / Feeds ──────────────────────────────────────── -->
   <section class="page" id="page-news" aria-label="News Feed">
-    <div class="section-header" style="margin-bottom:20px;">
-      <span class="glow-label">AI Curated News Feed</span>
-      <span class="muted" style="font-size:12px;">The best trending stories for your niche</span>
+    <div class="section-header" style="margin-bottom:20px; display:flex; align-items:center; justify-content:space-between;">
+      <div>
+        <span class="glow-label">Feeds</span>
+        <span class="muted" style="font-size:12px; display:block; margin-top:4px;">Manage your content sources</span>
+      </div>
+      <button class="btn-primary" onclick="openExploreFeedsModal()" style="width:auto; margin-top:0; padding:10px 16px;">
+        <span>+</span> Add Feed
+      </button>
     </div>
     
-    <div class="feed" id="newsFeedList">
-      <div class="skeleton" style="height:80px; margin:4px 0;"></div>
-      <div class="skeleton" style="height:80px; margin:4px 0;"></div>
-      <div class="skeleton" style="height:80px; margin:4px 0;"></div>
+    <!-- Active Feeds -->
+    <div style="margin-bottom: 32px;">
+      <h3 style="font-size:14px; font-weight:600; color:var(--text); margin-bottom:16px;">Your Active Feeds</h3>
+      <div class="platform-grid" id="activeFeedsGrid">
+        <!-- populated by js -->
+        <div class="empty-state" style="grid-column: 1 / -1; padding: 20px;">No feeds added yet. Click "Add Feed" to start.</div>
+      </div>
+    </div>
+
+    <!-- Feed Content -->
+    <div>
+      <h3 style="font-size:14px; font-weight:600; color:var(--text); margin-bottom:16px;">Latest Articles</h3>
+      <div class="feed" id="newsFeedList">
+        <div class="skeleton" style="height:80px; margin:4px 0;"></div>
+        <div class="skeleton" style="height:80px; margin:4px 0;"></div>
+        <div class="skeleton" style="height:80px; margin:4px 0;"></div>
+      </div>
     </div>
   </section>
 
@@ -421,8 +433,87 @@
     </div>
   </div>
 
+  <!-- ── Explore Feeds Modal ────────────────────────────────────── -->
+  <div class="studio-modal-overlay" id="exploreFeedsModalOverlay">
+    <div class="studio-modal" style="max-width: 800px; height: 80vh;">
+      <div class="studio-modal-header">
+        <div class="studio-modal-title">Explore Feeds</div>
+        <button class="studio-modal-close" onclick="closeExploreFeedsModal()">×</button>
+      </div>
+      <div class="studio-modal-body" style="flex-direction: column; padding: 24px;">
+        <div class="preview-tabs" id="exploreFeedsTabs" style="justify-content: center; margin-bottom: 24px;">
+          <button class="preview-tab active" onclick="switchFeedCategory('Tech')">Tech</button>
+          <button class="preview-tab" onclick="switchFeedCategory('Business')">Business</button>
+          <button class="preview-tab" onclick="switchFeedCategory('News')">News</button>
+          <button class="preview-tab" onclick="switchFeedCategory('Entertainment')">Entertainment</button>
+        </div>
+        
+        <div class="platform-grid" id="exploreFeedsGrid" style="overflow-y: auto; flex: 1; align-content: flex-start;">
+          <!-- Items populated by JS -->
+        </div>
+
+        <div style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 24px;">
+          <div style="font-size: 13px; font-weight: 500; margin-bottom: 12px; color: var(--text);">Or add a custom RSS feed URL:</div>
+          <div style="display: flex; gap: 12px;">
+            <input type="text" id="customRssUrl" placeholder="https://example.com/feed.xml" style="flex: 1; padding: 12px; background: var(--base); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); outline: none;">
+            <button class="btn-primary" onclick="addCustomFeed()" style="width: auto; margin-top: 0; padding: 0 20px;">Add Feed</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Automate Pipeline Live Modal (Placeholder for now) ───── -->
+  <div class="studio-modal-overlay" id="automateModalOverlay">
+    <div class="studio-modal" style="max-width: 800px; height: auto; min-height:400px; max-height:80vh;">
+      <div class="studio-modal-header">
+        <div class="studio-modal-title">
+          <span style="color: var(--accent);">⚡</span>
+          <span>10x Content Pipeline</span>
+        </div>
+        <button class="studio-modal-close" onclick="closeAutomateModal()">×</button>
+      </div>
+      <div class="studio-modal-body" style="flex-direction: column; padding: 24px;">
+        <p style="color:var(--text-muted); font-size:14px; margin-bottom:24px;">Select the feeds you want to scrape content from, then run the engine.</p>
+        <div id="automateFeedsSelection" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px;">
+          <!-- Fetched feeds as toggles -->
+        </div>
+        <button class="btn-primary" id="runPipelineBtn" onclick="startWorkflow()" style="font-size: 16px; padding: 14px;">Run Workflow Pipeline</button>
+        
+        <div id="workflowTracker" style="display:none; margin-top: 32px;">
+          <h3 style="font-size:14px; margin-bottom:16px;">Live Status</h3>
+          <div class="feed" id="workflowTrackerLog"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <!-- Toast stack -->
 <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
+
+<!-- Global AI Assistant Drawer -->
+<div class="ai-drawer" id="aiDrawer">
+  <div class="ai-drawer-header">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="color:var(--accent);">✦</span> AI Co-pilot
+    </div>
+    <button class="ai-drawer-close" onclick="toggleAiDrawer()">×</button>
+  </div>
+  <div class="ai-drawer-messages" id="agentReply">
+    <div class="chat-bubble agent">Hi! I'm loaded with your analytics and profile context. How can I help you dominate social media today?</div>
+  </div>
+  <div class="ai-drawer-input">
+    <div class="chat-input-row" style="margin-top:0;">
+      <input type="text" id="chatInput" placeholder="Ask AI to refine or suggest..." onkeypress="if(event.key === 'Enter') agentChat()" />
+      <button class="chat-send-btn" onclick="agentChat()">→</button>
+    </div>
+  </div>
+</div>
+
+<!-- Magic Wand FAB -->
+<button class="magic-wand-fab" onclick="toggleAiDrawer()" aria-label="Open AI Co-pilot">
+  ✦
+</button>
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="/dashboard/static/dashboard.js"></script>

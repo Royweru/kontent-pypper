@@ -1293,3 +1293,284 @@ async function detectTelegramChat() {
     btn.textContent = 'Detect Chat ID';
   }
 }
+
+// ── Automate Pipeline & Feeds UI ──────────────────────────────────
+function openAutomateModal() {
+  const modal = document.getElementById('automateModalOverlay');
+  if (modal) modal.classList.add('open');
+}
+
+function closeAutomateModal() {
+  const modal = document.getElementById('automateModalOverlay');
+  if (modal) modal.classList.remove('open');
+}
+
+let activeFeedCategory = 'Tech';
+
+function openExploreFeedsModal() {
+  const modal = document.getElementById('exploreFeedsModalOverlay');
+  if (modal) {
+    modal.classList.add('open');
+    renderExploreFeeds();
+  }
+}
+
+function closeExploreFeedsModal() {
+  const modal = document.getElementById('exploreFeedsModalOverlay');
+  if (modal) modal.classList.remove('open');
+}
+
+function switchFeedCategory(category) {
+  activeFeedCategory = category;
+  
+  const tabs = document.getElementById('exploreFeedsTabs');
+  if (tabs) {
+    Array.from(tabs.children).forEach(btn => {
+      if (btn.textContent.trim() === category) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+  
+  renderExploreFeeds();
+}
+
+const mockFeeds = {
+  'Tech': [
+    { title: 'TechCrunch', url: 'https://techcrunch.com/feed/' },
+    { title: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
+    { title: 'Wired', url: 'https://www.wired.com/feed/rss' }
+  ],
+  'Business': [
+    { title: 'Forbes', url: 'https://www.forbes.com/business/feed/' },
+    { title: 'Bloomberg', url: 'https://www.bloomberg.com/feed' }
+  ],
+  'News': [
+    { title: 'Reuters', url: 'https://www.reuters.com/tools/rss' },
+    { title: 'BBC', url: 'http://feeds.bbci.co.uk/news/rss.xml' }
+  ],
+  'Entertainment': [
+    { title: 'Variety', url: 'https://variety.com/feed/' },
+    { title: 'IGN', url: 'https://ign.com/feed.xml' }
+  ]
+};
+
+let userFeeds = [];
+
+function renderExploreFeeds() {
+  const grid = document.getElementById('exploreFeedsGrid');
+  if (!grid) return;
+  
+  const feeds = mockFeeds[activeFeedCategory] || [];
+  grid.innerHTML = feeds.map(f => {
+    const isAdded = userFeeds.some(uf => uf.url === f.url);
+    return `
+      <div class="platform-tile" style="display:flex; flex-direction:column; align-items:center; padding:16px;">
+        <div style="font-size:24px; margin-bottom:8px;">📰</div>
+        <div style="font-weight:600; font-size:13px; margin-bottom:12px; color:var(--text);">${esc(f.title)}</div>
+        <button class="btn-ghost" style="margin-top:auto; font-size:11px; padding:6px 12px; ${isAdded ? 'border-color:var(--accent); color:var(--accent);' : ''}" 
+                onclick="toggleFeed('${esc(f.title)}', '${esc(f.url)}')">
+          ${isAdded ? 'Added' : 'Add Feed'}
+        </button>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderActiveFeeds() {
+  const grid = document.getElementById('activeFeedsGrid');
+  if (!grid) return;
+  
+  if (!userFeeds.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1; padding: 20px;">No feeds added yet. Click "Add Feed" to start.</div>';
+  } else {
+    grid.innerHTML = userFeeds.map(f => `
+      <div class="platform-tile connected" style="display:flex; flex-direction:column; align-items:center; padding:16px;">
+        <div style="font-size:24px; margin-bottom:8px;">📰</div>
+        <div style="font-weight:600; font-size:13px; margin-bottom:12px; color:var(--text);">${esc(f.title)}</div>
+        <button class="btn-ghost" style="margin-top:auto; font-size:11px; padding:6px 12px; color:var(--danger); border-color:var(--border);" 
+                onclick="removeFeed('${esc(f.url)}')">Remove</button>
+      </div>
+    `).join('');
+  }
+}
+
+function toggleFeed(title, url) {
+  const idx = userFeeds.findIndex(f => f.url === url);
+  if (idx > -1) {
+    userFeeds.splice(idx, 1);
+    toast(`Removed ${title} from your feeds`);
+  } else {
+    const isPro = currentUser && currentUser.plan !== 'free';
+    if (!isPro && userFeeds.length >= 5) {
+      toast('Free plan limited to 5 feeds. Please upgrade.', 'error');
+      return;
+    }
+    userFeeds.push({ title, url });
+    toast(`Added ${title} to your feeds`, 'success');
+  }
+  renderExploreFeeds();
+  renderActiveFeeds();
+}
+
+function removeFeed(url) {
+  userFeeds = userFeeds.filter(f => f.url !== url);
+  renderActiveFeeds();
+  toast('Feed removed');
+}
+
+function addCustomFeed() {
+  const input = document.getElementById('customRssUrl');
+  if (!input) return;
+  const url = input.value.trim();
+  if (!url) return;
+  
+  const isPro = currentUser && currentUser.plan !== 'free';
+  if (!isPro && userFeeds.length >= 5) {
+    toast('Free plan limited to 5 feeds. Please upgrade.', 'error');
+    return;
+  }
+  
+  try {
+    const title = new URL(url).hostname.replace('www.', '');
+    if(!userFeeds.some(f => f.url === url)) {
+      userFeeds.push({ title, url });
+      toast(`Added custom feed ${title}`, 'success');
+      renderActiveFeeds();
+    }
+  } catch(e) {
+    toast('Invalid URL', 'error');
+  }
+  input.value = '';
+  closeExploreFeedsModal();
+}
+
+function startWorkflow() {
+  const btn = document.getElementById('runPipelineBtn');
+  const tracker = document.getElementById('workflowTracker');
+  const log = document.getElementById('workflowTrackerLog');
+  
+  if (!btn || !tracker || !log) return;
+  
+  // Actually we shouldn't block just on feeds, since they can use the default global
+  // But for the sake of demo:
+  if (userFeeds.length === 0) {
+    toast('Please add at least one feed first', 'warning');
+    return; // we could let it pass with default news but let us enforce it for now
+  }
+  
+  btn.disabled = true;
+  tracker.style.display = 'block';
+  log.innerHTML = '';
+  
+  const steps = [
+    { msg: 'Initiating LangGraph pipeline...', delay: 500 },
+    { msg: 'Fetching articles from your feeds...', delay: 1500 },
+    { msg: 'Agent grading articles for relevance...', delay: 3000 },
+    { msg: 'Drafting text for Twitter, LinkedIn, and TikTok...', delay: 5000 },
+    { msg: 'Generating video assets...', delay: 8000 },
+    { msg: 'Workflow complete. Assets ready for review!', delay: 10000 }
+  ];
+  
+  steps.forEach(step => {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      el.className = 'feed-item';
+      el.style.fontSize = '13px';
+      el.style.color = 'var(--text-2)';
+      el.innerHTML = `<span style="color:var(--accent); margin-right:8px;">✓</span> ${step.msg}`;
+      log.appendChild(el);
+      
+      if (step.msg.includes('complete')) {
+        btn.disabled = false;
+        toast('Content automation finished!', 'success');
+      }
+    }, step.delay);
+  });
+}
+
+
+// On Boot, also load feeds
+async function loadUserFeeds() {
+  try {
+    const r = await apiFetch('/news/feed/sources');
+    if (r.ok) {
+      userFeeds = await r.json();
+      renderActiveFeeds();
+      renderExploreFeeds();
+    }
+  } catch(e) {}
+}
+loadUserFeeds();
+
+// Override the previously defined functions to use the new endpoints:
+window.toggleFeed = async function(title, url) {
+  const idx = userFeeds.findIndex(f => f.url === url);
+  if (idx > -1) {
+    // Remove
+    await apiFetch('/news/feed/sources?url=' + encodeURIComponent(url), { method: 'DELETE' });
+    userFeeds.splice(idx, 1);
+    toast(`Removed ${title} from your feeds`);
+  } else {
+    // Add
+    const isPro = currentUser && currentUser.plan !== 'free';
+    if (!isPro && userFeeds.length >= 5) {
+      toast('Free plan limited to 5 feeds. Please upgrade.', 'error');
+      return;
+    }
+    const r = await apiFetch('/news/feed/sources', {
+      method: 'POST',
+      body: JSON.stringify({ title, url })
+    });
+    if (r.ok) {
+      userFeeds.push({ title, url });
+      toast(`Added ${title} to your feeds`, 'success');
+    } else {
+      toast('Failed to add feed', 'error');
+    }
+  }
+  renderExploreFeeds();
+  renderActiveFeeds();
+};
+
+window.removeFeed = async function(url) {
+  await apiFetch('/news/feed/sources?url=' + encodeURIComponent(url), { method: 'DELETE' });
+  userFeeds = userFeeds.filter(f => f.url !== url);
+  renderActiveFeeds();
+  renderExploreFeeds();
+  toast('Feed removed');
+};
+
+window.addCustomFeed = async function() {
+  const input = document.getElementById('customRssUrl');
+  if (!input) return;
+  const url = input.value.trim();
+  if (!url) return;
+  
+  const isPro = currentUser && currentUser.plan !== 'free';
+  if (!isPro && userFeeds.length >= 5) {
+    toast('Free plan limited to 5 feeds. Please upgrade.', 'error');
+    return;
+  }
+  
+  const title = new URL(url).hostname.replace('www.', '');
+  const r = await apiFetch('/news/feed/sources', {
+    method: 'POST',
+    body: JSON.stringify({ title, url })
+  });
+  
+  if (r.ok) {
+    userFeeds.push({ title, url });
+    toast(`Added custom feed ${title}`, 'success');
+    renderActiveFeeds();
+  } else {
+    const err = await r.json();
+    toast(err.detail || 'Failed to add feed', 'error');
+  }
+  
+  input.value = '';
+  closeExploreFeedsModal();
+};
+

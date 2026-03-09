@@ -315,7 +315,7 @@
 
 /* ── Right-Side AI Drawer ─────────────────────────────────────── */
 .ai-drawer {
-  position: absolute;
+  position: fixed;
   top: 0; right: 0; bottom: 0;
   width: 360px;
   background: var(--surface);
@@ -324,8 +324,8 @@
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   flex-direction: column;
-  z-index: 10;
-  box-shadow: -10px 0 30px rgba(0,0,0,0.3);
+  z-index: 10000;
+  box-shadow: -10px 0 30px rgba(0,0,0,0.5);
 }
 
 .ai-drawer.open {

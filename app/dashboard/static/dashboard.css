@@ -803,3 +803,34 @@ body.sidebar-open .sidebar-overlay {
     transform: translateX(0);
   }
 }
+
+/* ── Global Magic Wand FAB ───────────────────────────────── */
+.magic-wand-fab {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--deep);
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(200,249,81,0.4);
+  border: none;
+  cursor: pointer;
+  z-index: 9998;
+  transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.magic-wand-fab:hover {
+  transform: translateY(-4px) scale(1.05);
+  box-shadow: 0 8px 24px rgba(200,249,81,0.6);
+  background: #d5ff6a;
+}
+
+.magic-wand-fab:active {
+  transform: translateY(0) scale(0.95);
+}
