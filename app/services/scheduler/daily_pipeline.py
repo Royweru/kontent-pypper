@@ -172,7 +172,7 @@ async def run_daily_pipeline(user_id: int):
                 post_id=new_post.id,
                 platform=r.platform,
                 status=status,
-                post_url=r.post_url,
+                platform_post_url=r.post_url,
                 platform_post_id=r.post_id,
                 error_message=r.error,
             )

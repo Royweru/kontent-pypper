@@ -15,6 +15,7 @@ if (!token) window.location.replace('/dashboard/login');
 // ── State ─────────────────────────────────────────────────────────
 let currentUser     = null;
 let enhancedContent = {};
+let PLATFORM_RULES  = null;
 
 function toggleSidebar() {
   if (window.innerWidth <= 960) {
@@ -116,6 +117,13 @@ function renderUser(user) {
     if (!res.ok) { logout(); return; }
     currentUser = await res.json();
     renderUser(currentUser);
+    
+    // Fetch Platform Rules
+    const rulesRes = await apiFetch('/studio/rules');
+    if (rulesRes.ok) {
+      PLATFORM_RULES = await rulesRes.json();
+    }
+    
     loadOverview();
     renderPlatformToggles();
   } catch { logout(); }
@@ -606,6 +614,11 @@ function renderPlatformToggles() {
         return;
       }
       el.classList.toggle('on');
+      // trigger validation when toggling platforms
+      validateStudioPost();
+      const activePlatformTab = document.querySelector('.preview-platform-tab.active');
+      const activePlatform = activePlatformTab ? activePlatformTab.dataset.platform : 'twitter';
+      renderPreview(activePlatform);
     });
   });
 }
@@ -661,6 +674,74 @@ function bindRealTimePreview() {
   }
 }
 
+function validateStudioPost() {
+  if (!PLATFORM_RULES) return true;
+  const selected = getSelectedPlatforms();
+  const raw = document.getElementById('studioInput')?.value.trim() || '';
+  const mediaInput = document.getElementById('mediaInput');
+  const hasMedia = mediaInput && mediaInput.files && mediaInput.files.length > 0;
+  
+  let hasVideo = false;
+  let hasImage = false;
+  if (hasMedia) {
+      for (let i = 0; i < mediaInput.files.length; i++) {
+          if (mediaInput.files[i].type.startsWith('video/')) hasVideo = true;
+          if (mediaInput.files[i].type.startsWith('image/')) hasImage = true;
+      }
+  }
+  
+  let errors = [];
+  
+  selected.forEach(pid => {
+    // Convert 'twitter' back to 'X' for rule lookup
+    let ruleKey = pid.toUpperCase();
+    if (ruleKey === 'TWITTER') ruleKey = 'X';
+    
+    const rules = PLATFORM_RULES[ruleKey];
+    if (!rules) return;
+    
+    const content = enhancedContent[pid] !== undefined ? enhancedContent[pid] : raw;
+    
+    // Basic character length validation
+    if (content.length > rules.max_chars) {
+      errors.push(`${pid}: char limit exceeded (${content.length}/${rules.max_chars})`);
+    }
+    // Media requirements validation
+    if (rules.requires_media && !hasMedia) {
+      errors.push(`${pid}: requires at least one image or video`);
+    }
+    // Allowed media types
+    if (hasVideo && !rules.allowed_media.includes('video')) {
+      errors.push(`${pid}: does not allow video uploads`);
+    }
+    if (hasImage && !rules.allowed_media.includes('image')) {
+      errors.push(`${pid}: does not allow image uploads`);
+    }
+  });
+  
+  // Show error summary in UI
+  const errorContainer = document.getElementById('studioValidationErrors');
+  const publishBtn = document.getElementById('publishBtn');
+  
+  if (errorContainer) {
+    if (errors.length > 0) {
+      errorContainer.innerHTML = errors.map(e => `<div>⚠️ ${esc(e)}</div>`).join('');
+      errorContainer.style.display = 'block';
+    } else {
+      errorContainer.innerHTML = '';
+      errorContainer.style.display = 'none';
+    }
+  }
+  
+  if (publishBtn) {
+    // Also disable if no platform selected or empty content
+    const noContent = !raw && Object.keys(enhancedContent).length === 0;
+    publishBtn.disabled = errors.length > 0 || selected.length === 0 || noContent;
+  }
+  
+  return errors.length === 0;
+}
+
 // Call this once on load
 document.addEventListener('DOMContentLoaded', bindRealTimePreview);
 
@@ -704,6 +785,9 @@ function renderPreview(activePlatform) {
     // Generic fallback for others
     canvas.innerHTML = `<div class="mock-card"><div style="white-space:pre-wrap;">${esc(textToRender) || 'Start typing...'}</div></div>`;
   }
+  
+  // After we render, validate state
+  validateStudioPost();
 }
 
 function switchTab(pid) {
@@ -715,17 +799,21 @@ function buildTwitterMock(text) {
   const handle = currentUser ? currentUser.email.split('@')[0] : 'creator';
   const safeText = esc(text) || 'What is happening?!';
   
-  // Create dummy image if one is selected in unified dropzone
+  // Create dummy images if selected in unified dropzone
   const mediaInput = document.getElementById('mediaInput');
   let mediaHtml = '';
-  if (mediaInput && mediaInput.files && mediaInput.files[0]) {
-    const file = mediaInput.files[0];
-    const url = URL.createObjectURL(file);
-    if (file.type.startsWith('video/')) {
-      mediaHtml = `<video src="${url}" style="width:100%; border-radius:16px; margin-top:12px; border:1px solid #2f3336;" controls></video>`;
-    } else {
-      mediaHtml = `<img src="${url}" style="width:100%; border-radius:16px; margin-top:12px; border:1px solid #2f3336;" />`;
+  if (mediaInput && mediaInput.files && mediaInput.files.length > 0) {
+    mediaHtml = '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">';
+    for (let i = 0; i < mediaInput.files.length; i++) {
+        const file = mediaInput.files[i];
+        const url = URL.createObjectURL(file);
+        if (file.type.startsWith('video/')) {
+            mediaHtml += `<video src="${url}" style="flex:1; border-radius:16px; border:1px solid #2f3336;" controls></video>`;
+        } else {
+            mediaHtml += `<img src="${url}" style="flex:1; border-radius:16px; border:1px solid #2f3336; object-fit:cover; max-height:250px;" />`;
+        }
     }
+    mediaHtml += '</div>';
   }
 
   return `
@@ -765,17 +853,21 @@ function buildLinkedInMock(text) {
     isTruncated = true;
   }
 
-  // Create dummy image if one is selected
+  // Create dummy images if selected
   const mediaInput = document.getElementById('mediaInput');
   let mediaHtml = '';
-  if (mediaInput && mediaInput.files && mediaInput.files[0]) {
-    const file = mediaInput.files[0];
-    const url = URL.createObjectURL(file);
-    if (file.type.startsWith('video/')) {
-      mediaHtml = `<video src="${url}" style="width:100%; margin-top:12px; max-height:400px; object-fit:cover;" controls></video>`;
-    } else {
-      mediaHtml = `<img src="${url}" style="width:100%; margin-top:12px; max-height:400px; object-fit:cover;" />`;
+  if (mediaInput && mediaInput.files && mediaInput.files.length > 0) {
+    mediaHtml = '<div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">';
+    for (let i = 0; i < mediaInput.files.length; i++) {
+      const file = mediaInput.files[i];
+      const url = URL.createObjectURL(file);
+      if (file.type.startsWith('video/')) {
+        mediaHtml += `<video src="${url}" style="width:100%; max-height:400px; object-fit:cover;" controls></video>`;
+      } else {
+        mediaHtml += `<img src="${url}" style="width:100%; max-height:400px; object-fit:cover;" />`;
+      }
     }
+    mediaHtml += '</div>';
   }
 
   return `
@@ -824,13 +916,53 @@ async function publishContent() {
   btn.disabled = true;
   btn.textContent = 'PUBLISHING...';
 
+  let imageUrls = [];
+  let videoUrls = [];
+
+  const mediaInput = document.getElementById('mediaInput');
+  if (mediaInput && mediaInput.files && mediaInput.files.length > 0) {
+    btn.textContent = 'UPLOADING MEDIA...';
+    try {
+      const formData = new FormData();
+      for (let i = 0; i < mediaInput.files.length; i++) {
+        formData.append('files', mediaInput.files[i]);
+      }
+      
+      const uploadRes = await fetch(`${API}/media/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json();
+        throw new Error(err.detail || 'Upload failed');
+      }
+      
+      const uploadData = await uploadRes.json();
+      uploadData.uploaded.forEach(m => {
+        if (m.type === 'video') videoUrls.push(m.url);
+        else imageUrls.push(m.url);
+      });
+    } catch(e) {
+      toast('Upload error: ' + e.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Publish Now';
+      return;
+    }
+  }
+
+  btn.textContent = 'PUBLISHING...';
+
   try {
     const r = await apiFetch('/studio/publish', {
       method: 'POST',
       body:   JSON.stringify({ 
         original_content: raw,
         platform_specific_content: contentMap, 
-        platforms: selected 
+        platforms: selected,
+        image_urls: imageUrls,
+        video_urls: videoUrls
       }),
     });
     const data = await r.json();
@@ -840,6 +972,11 @@ async function publishContent() {
       document.getElementById('studioInput').value = '';
       document.getElementById('previewContent').innerHTML = '<div style="color:var(--text-dim); text-align:center; margin-top:40px;">Type in the editor to see your real-time preview...</div>';
       
+      // Clear media
+      const prev = document.getElementById('mediaPreview');
+      if (prev) prev.innerHTML = '';
+      if (mediaInput) mediaInput.value = '';
+
       // Close the modal
       closeStudioModal();
       loadOverview();
@@ -921,20 +1058,28 @@ async function agentChat() {
 
 // ── Media upload ──────────────────────────────────────────────────
 function handleMediaSelect(input) {
-  const file = input.files[0];
-  if (!file) return;
+  const files = input.files;
+  if (!files || files.length === 0) return;
   const prev = document.getElementById('mediaPreview');
-  const url  = URL.createObjectURL(file);
   
-  // Render small thumbnail in the upload zone
-  prev.innerHTML = file.type.startsWith('video/')
-    ? `<video src="${url}" controls style="border-radius:6px; max-height:48px; object-fit:cover;"></video>`
-    : `<img  src="${url}" style="border-radius:6px; max-height:48px; object-fit:cover;" alt="preview"/>`;
+  // Render small thumbnails in the upload zone
+  let html = '';
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const url  = URL.createObjectURL(file);
+    if (file.type.startsWith('video/')) {
+       html += `<video src="${url}" controls style="border-radius:6px; max-height:48px; object-fit:cover;"></video>`;
+    } else {
+       html += `<img src="${url}" style="border-radius:6px; max-height:48px; object-fit:cover;" alt="preview"/>`;
+    }
+  }
+  prev.innerHTML = html;
     
   // Force the Real-Time Preview panels on the right to re-render so they show the media in the mock cards
   const activePlatformTab = document.querySelector('.preview-platform-tab.active');
   const activePlatform = activePlatformTab ? activePlatformTab.dataset.platform : 'twitter';
   renderPreview(activePlatform);
+  validateStudioPost();
 }
 
 // Drop zone events
@@ -946,10 +1091,11 @@ document.addEventListener('DOMContentLoaded', () => {
     zone.addEventListener('drop', e => {
       e.preventDefault();
       zone.classList.remove('drag-over');
-      const file = e.dataTransfer.files[0];
-      if (file) {
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         const dt = new DataTransfer();
-        dt.items.add(file);
+        for (let i = 0; i < e.dataTransfer.files.length; i++) {
+            dt.items.add(e.dataTransfer.files[i]);
+        }
         const input = document.getElementById('mediaInput');
         input.files = dt.files;
         handleMediaSelect(input);

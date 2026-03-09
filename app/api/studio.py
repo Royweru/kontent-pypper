@@ -12,6 +12,7 @@ from app.services.ai.enhancer import EnhancerService
 from app.services.ai.llm_client import LLMClient
 from app.services.social_service import SocialService
 from app.core.config import settings
+from app.core.platform_rules import PLATFORM_RULES, validate_post_for_platform
 
 router = APIRouter()
 
@@ -40,6 +41,11 @@ class ChatRequest(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────
 
+@router.get("/rules", summary="Get Platform Rules")
+async def get_rules():
+    """Returns the centralized publishing rules for all platforms."""
+    return PLATFORM_RULES
+
 @router.post("/draft", summary="Enhance Draft via AI")
 async def create_draft(req: DraftRequest, user: CurrentUser):
     """
@@ -67,6 +73,20 @@ async def publish_now(req: PublishRequest, user: CurrentUser, db: DB):
     and broadcasts it out via the SocialService orchestrator to connected platforms.
     """
     from app.models.post import Post, PostResult
+
+    # 0. Validate Rules
+    has_video = bool(req.video_urls)
+    has_image = bool(req.image_urls)
+    
+    validation_errors = []
+    for platform in req.platforms:
+        content = req.platform_specific_content.get(platform, req.original_content)
+        # Note: video_duration_sec could be fetched from video metadata later
+        errors = validate_post_for_platform(platform, content, has_video, has_image, 0)
+        validation_errors.extend(errors)
+        
+    if validation_errors:
+        raise HTTPException(status_code=400, detail="Validation Failed: " + " | ".join(validation_errors))
 
     # 1. Create the overarching Post record
     new_post = Post(
@@ -102,9 +122,8 @@ async def publish_now(req: PublishRequest, user: CurrentUser, db: DB):
             platform=r.platform,
             status="published" if r.success else "failed",
             platform_post_id=r.post_id,
-            post_url=r.post_url,
+            platform_post_url=r.post_url,
             error_message=r.error,
-            raw_response=r.raw
         )
         db.add(post_result)
         
@@ -133,7 +152,7 @@ async def agent_chat(req: ChatRequest, user: CurrentUser, db: DB):
     # 1. Fetch connected platforms for context
     from sqlalchemy import select
     from app.models.social import SocialConnection
-    from app.models.analytics import AnalyticsMetric
+    from app.models.analytics import PostAnalytics
 
     result = await db.execute(
         select(SocialConnection.platform)
@@ -145,14 +164,15 @@ async def agent_chat(req: ChatRequest, user: CurrentUser, db: DB):
     # 2. Fetch high-level analytics context (to make the AI sound smart)
     # Just sum up recent metrics as a baseline context
     metrics_result = await db.execute(
-        select(AnalyticsMetric.views, AnalyticsMetric.engagements)
-        .where(AnalyticsMetric.user_id == user.id)
-        .order_by(AnalyticsMetric.date_recorded.desc())
+        select(PostAnalytics.views, PostAnalytics.likes, PostAnalytics.comments, PostAnalytics.shares)
+        .join(PostAnalytics.post)
+        .where(PostAnalytics.post.has(user_id=user.id))
+        .order_by(PostAnalytics.fetched_at.desc())
         .limit(30) # Last 30 records
     )
     metrics = metrics_result.all()
     total_views = sum(m.views or 0 for m in metrics)
-    total_eng = sum(m.engagements or 0 for m in metrics)
+    total_eng = sum((m.likes or 0) + (m.comments or 0) + (m.shares or 0) for m in metrics)
 
     # 3. Construct the highly personalized System Prompt
     sys_prompt = (

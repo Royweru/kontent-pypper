@@ -206,7 +206,7 @@
               </div>
               <div id="mediaPreview" style="display:flex; gap:8px;"></div>
             </div>
-            <input type="file" id="mediaInput" accept="video/*,image/*" style="display:none" onchange="handleMediaSelect(this)" />
+            <input type="file" id="mediaInput" accept="video/*,image/*" style="display:none" onchange="handleMediaSelect(this)" multiple />
           </div>
         </div>
 
@@ -252,6 +252,7 @@
             <span style="font-size:14px; line-height:0;">◂</span> Chat with AI
           </button>
         </div>
+        <div id="studioValidationErrors" style="display:none; color:#ff4d4f; font-size:12px; margin:0 16px; flex:1; text-align:right;"></div>
         <div class="studio-modal-footer-right">
           <button class="btn-ghost" onclick="toast('Scheduling coming soon', 'warning')" style="margin:0; width:auto; padding: 10px 16px;">Schedule</button>
           <button class="btn-primary" id="publishBtn" onclick="publishContent()" style="margin:0; width:auto; padding: 10px 24px;">Publish Now</button>

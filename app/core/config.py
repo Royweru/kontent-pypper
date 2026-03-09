@@ -59,15 +59,11 @@ class Settings(BaseSettings):
     PEXELS_API_KEY: str = ""
 
     # ── Cloud Storage ─────────────────────────────────────────────
-    CLOUDINARY_CLOUD_NAME: str = ""
-    CLOUDINARY_API_KEY: str = ""
-    CLOUDINARY_API_SECRET: str = ""
-    USE_CLOUDINARY: bool = False
-
-    AWS_ACCESS_KEY_ID: str = ""
-    AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_BUCKET_NAME: str = ""
-    AWS_REGION: str = "us-east-1"
+    R2_ACCOUNT_ID: str = ""
+    R2_BUCKET_NAME: str = "kontent"
+    R2_PUBLIC_DEV_URL: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
 
     UPLOAD_DIR: str = "uploads/"
 

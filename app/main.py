@@ -46,12 +46,13 @@ app.add_middleware(
 # -- API Routes -------------------------------------------------------------
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 
-from app.api import social, studio, analytics, news, posts
+from app.api import social, studio, analytics, news, posts, media
 app.include_router(social.router,    prefix="/api/v1/social",    tags=["social"])
 app.include_router(studio.router,    prefix="/api/v1/studio",    tags=["studio"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
 app.include_router(news.router,      prefix="/api/v1/news",      tags=["news"])
 app.include_router(posts.router,     prefix="/api/v1/posts",     tags=["posts"])
+app.include_router(media.router,     prefix="/api/v1/media",     tags=["media"])
 
 # -- Dashboard UI -----------------------------------------------------------
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
@@ -80,3 +81,7 @@ async def serve_logo():
 async def health_check():
     return {"status": "ok", "agent": settings.APP_NAME}
 
+if __name__ == "__main__":
+    import uvicorn
+    print("App starting on http://localhost:8000")
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
