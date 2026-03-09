@@ -158,4 +158,33 @@ class LinkedInService(BasePlatformService):
             )
             up_resp.raise_for_status()
             
+            
             return asset_urn
+
+    # ── Analytics ─────────────────────────────────────────────────
+
+    async def fetch_analytics(self, access_token: str, platform_post_id: str, **kwargs) -> dict:
+        """Fetch basic socialAction data for a LinkedIn post (URN)"""
+        urn = f"urn:li:ugcPost:{platform_post_id}"
+        url = f"https://api.linkedin.com/v2/socialActions/{urn}"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "X-Restli-Protocol-Version": "2.0.0",
+        }
+        
+        try:
+            async with self._make_client(headers) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                data = resp.json()
+                
+                return {
+                    "views": 0,  # Standard API does not provide impressions directly
+                    "likes": data.get("likesSummary", {}).get("totalLikes", 0),
+                    "comments": data.get("commentsSummary", {}).get("totalFirstLevelComments", 0),
+                    "shares": 0,
+                    "clicks": 0
+                }
+        except Exception as e:
+            logger.error("[linkedin] Analytics fetch failed: %s", e)
+            return {"views": 0, "likes": 0, "comments": 0, "shares": 0, "clicks": 0}

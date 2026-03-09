@@ -102,8 +102,8 @@ class TwitterService(BasePlatformService):
             if k.startswith("oauth_")
         )
 
-    def _headers(self, method: str, url: str, access_token: str, token_secret: str) -> dict:
-        return {"Authorization": self._build_auth_header(method, url, access_token, token_secret)}
+    def _headers(self, method: str, url: str, access_token: str, token_secret: str, extra_params: dict = None) -> dict:
+        return {"Authorization": self._build_auth_header(method, url, access_token, token_secret, extra_params)}
 
     # ── User info ─────────────────────────────────────────────────
 
@@ -268,3 +268,31 @@ class TwitterService(BasePlatformService):
                 files={"media": ("chunk", chunk, "application/octet-stream")},
             )
             resp.raise_for_status()
+
+    # ── Analytics ─────────────────────────────────────────────────
+
+    async def fetch_analytics(self, access_token: str, platform_post_id: str, token_secret: str = "", **kwargs) -> dict:
+        """Fetch public_metrics for a tweet from X API v2."""
+        url = f"{TWITTER_V2}/tweets/{platform_post_id}"
+        params = {"tweet.fields": "public_metrics"}
+        
+        headers = self._headers("GET", url, access_token, token_secret, extra_params=params)
+        
+        try:
+            async with self._make_client(headers) as client:
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                
+                metrics = data.get("data", {}).get("public_metrics", {})
+                
+                return {
+                    "views": int(metrics.get("impression_count", 0)),
+                    "likes": int(metrics.get("like_count", 0)),
+                    "comments": int(metrics.get("reply_count", 0)),
+                    "shares": int(metrics.get("retweet_count", 0)),
+                    "clicks": int(metrics.get("url_link_clicks", 0)) if "url_link_clicks" in metrics else 0
+                }
+        except Exception as e:
+            logger.error("[twitter] Analytics fetch failed: %s", e)
+            return {"views": 0, "likes": 0, "comments": 0, "shares": 0, "clicks": 0}

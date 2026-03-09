@@ -48,11 +48,26 @@ async def fetch_and_store_analytics(db: AsyncSession, user_id: int):
             logger.warning(f"[DataSync] Missing {platform} connection for user {user_id}. Skipping.")
             continue
 
-        # In a fully scaled implementation, here we call platform-specific API adapters:
-        # e.g. twitter_api.get_tweet_metrics(connection.access_token, post_id=res.platform_post_id)
-        
-        # For KontentPyper MVP, we insert/update a dummy/simulated analytics record 
-        # to prove the loop works, unless real API credentials support insight fetching.
+        # Instantiate platform adapter
+        adapter = None
+        if platform == 'twitter':
+            from app.services.platforms.twitter import TwitterService
+            from app.core.config import settings
+            adapter = TwitterService(api_key=settings.TWITTER_API_KEY, api_secret=settings.TWITTER_API_SECRET)
+        elif platform == 'youtube':
+            from app.services.platforms.youtube import YouTubeService
+            adapter = YouTubeService()
+        elif platform == 'linkedin':
+            from app.services.platforms.linkedin import LinkedInService
+            adapter = LinkedInService()
+        elif platform == 'tiktok':
+            from app.services.platforms.tiktok import TikTokService
+            adapter = TikTokService()
+
+        if not adapter:
+            logger.warning(f"[DataSync] No adapter available for {platform}. Skipping.")
+            continue
+
         for res in results:
             if not res.platform_post_id: continue
                 
@@ -72,10 +87,21 @@ async def fetch_and_store_analytics(db: AsyncSession, user_id: int):
                 )
                 db.add(analytic_record)
             
-            # Simulate metrics update or fetch REAL metrics here
-            # analytic_record.views = latest_metrics['views']
-            analytic_record.views += 15  # Simulated organic growth
-            analytic_record.likes += 2
+            # Fetch REAL metrics using the integrated platform adapters
+            metrics = await adapter.fetch_analytics(
+                access_token=connection.access_token, 
+                platform_post_id=res.platform_post_id,
+                token_secret=connection.oauth_token_secret if platform == 'twitter' else ""
+            )
+            
+            if metrics:
+                # We always trust the latest counts from the platform over our own DB state
+                # because social platforms dictate the exact number of likes/views.
+                analytic_record.views = metrics.get('views', analytic_record.views)
+                analytic_record.likes = metrics.get('likes', analytic_record.likes)
+                analytic_record.comments = metrics.get('comments', analytic_record.comments)
+                analytic_record.shares = metrics.get('shares', analytic_record.shares)
+                analytic_record.clicks = metrics.get('clicks', analytic_record.clicks)
             
     await db.commit()
-    logger.info(f"[DataSync] Completed sync for user {user_id}. Updated {len(recent_results)} records.")
+    logger.info(f"[DataSync] Completed sync for user {user_id}. Updated {len(recent_results)} post metrics.")

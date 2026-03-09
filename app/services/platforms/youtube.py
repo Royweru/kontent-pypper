@@ -134,3 +134,36 @@ class YouTubeService(BasePlatformService):
                 return self.ok(vid, f"https://youtube.com/watch?v={vid}", data)
             
             return self.fail(f"Upload put failed HTTP {upload_resp.status_code}: {upload_resp.text}")
+
+    # ── Analytics ─────────────────────────────────────────────────
+
+    async def fetch_analytics(self, access_token: str, platform_post_id: str, **kwargs) -> dict:
+        """Fetch video statistics from YouTube Data API v3."""
+        url = "https://www.googleapis.com/youtube/v3/videos"
+        params = {
+            "part": "statistics",
+            "id": platform_post_id
+        }
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        try:
+            async with self._make_client(headers) as client:
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                
+                if not data.get("items"):
+                    return {"views": 0, "likes": 0, "comments": 0, "shares": 0, "clicks": 0}
+                    
+                stats = data["items"][0].get("statistics", {})
+                
+                return {
+                    "views": int(stats.get("viewCount", 0)),
+                    "likes": int(stats.get("likeCount", 0)),
+                    "comments": int(stats.get("commentCount", 0)),
+                    "shares": 0,
+                    "clicks": 0
+                }
+        except Exception as e:
+            logger.error("[youtube] Analytics fetch failed: %s", e)
+            return {"views": 0, "likes": 0, "comments": 0, "shares": 0, "clicks": 0}

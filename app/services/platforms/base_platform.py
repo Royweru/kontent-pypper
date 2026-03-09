@@ -84,6 +84,13 @@ class BasePlatformService(ABC):
     async def get_user_info(self, access_token: str) -> dict:
         """Fetch basic profile info (id, username, avatar) for the given token."""
 
+    @abstractmethod
+    async def fetch_analytics(self, access_token: str, platform_post_id: str, **kwargs) -> dict:
+        """
+        Fetch real-time analytics for a specific post.
+        Returns a dictionary with keys: views, likes, comments, shares, clicks.
+        """
+
     # ── Shared HTTP helpers ───────────────────────────────────────
 
     def _make_client(self, headers: Optional[dict] = None) -> httpx.AsyncClient:

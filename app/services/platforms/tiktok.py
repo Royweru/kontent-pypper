@@ -114,3 +114,40 @@ class TikTokService(BasePlatformService):
                     return self.ok(publish_id, "", data)
                     
             return self.fail(f"Init failed HTTP {resp.status_code}: {resp.text}")
+
+    # ── Analytics ─────────────────────────────────────────────────
+
+    async def fetch_analytics(self, access_token: str, platform_post_id: str, **kwargs) -> dict:
+        """Fetch video performance insights from TikTok API."""
+        url = "https://open.tiktokapis.com/v2/video/query/"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "filters": {"video_ids": [platform_post_id]},
+            "fields": "like_count,comment_count,share_count,view_count"
+        }
+        
+        try:
+            async with self._make_client(headers) as client:
+                resp = await client.post(url, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                
+                videos = data.get("data", {}).get("videos", [])
+                if not videos:
+                    return {"views": 0, "likes": 0, "comments": 0, "shares": 0, "clicks": 0}
+                    
+                stats = videos[0]
+                
+                return {
+                    "views": int(stats.get("view_count", 0)),
+                    "likes": int(stats.get("like_count", 0)),
+                    "comments": int(stats.get("comment_count", 0)),
+                    "shares": int(stats.get("share_count", 0)),
+                    "clicks": 0
+                }
+        except Exception as e:
+            logger.error("[tiktok] Analytics fetch failed: %s", e)
+            return {"views": 0, "likes": 0, "comments": 0, "shares": 0, "clicks": 0}
