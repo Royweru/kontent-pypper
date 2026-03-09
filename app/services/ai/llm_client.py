@@ -42,7 +42,7 @@ class LLMClient:
         system_prompt: str,
         user_prompt: str,
         response_model: Type[T],
-        temperature: float = 0.7,
+        temperature: float = 1.0,
     ) -> T:
         """
         Uses LangChain's with_structured_output to guarantee a Pydantic model.
@@ -73,7 +73,7 @@ class LLMClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        temperature: float = 0.7,
+        temperature: float = 1.0,
     ) -> str:
         """Standard text completion. Returns the raw content string."""
         messages = [

@@ -61,7 +61,7 @@ Provide your analysis in the strict JSON format requested."""
             system_prompt=self.SYSTEM_PROMPT,
             user_prompt=user_prompt,
             response_model=StrategicInsight,
-            temperature=0.4,
+            temperature=1.0,
         )
 
         return insight
