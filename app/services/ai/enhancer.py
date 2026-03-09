@@ -10,29 +10,32 @@ from pydantic import BaseModel, Field
 from app.services.ai.llm_client import LLMClient
 from app.core.config import settings
 
-
 # ── Structured Output Schema ──────────────────────────────────────
 
-class EnhancedDraft(BaseModel):
+class PlatformDraft(BaseModel):
+    platform: str = Field(description="The name of the platform, e.g., 'twitter', 'linkedin'")
+    content: str = Field(description="The fully formatted, ready-to-publish content string for this platform")
+
+class EnhancedDraftResponse(BaseModel):
     """The strict format the LLM must return when enhancing content."""
-    platforms: Dict[str, str] = Field(
-        ...,
-        description=(
-            "A dictionary mapping the platform name (e.g., 'twitter', 'linkedin') "
-            "to the fully formatted, ready-to-publish content string for that platform."
-        ),
+    drafts: List[PlatformDraft] = Field(
+        description="A list of platform-specific drafts. Must contain exactly one item for each requested platform."
     )
     suggested_hashtags: List[str] = Field(
         default=[],
         description="A list of 3-5 high-impact suggested tags without the # symbol.",
     )
 
+class EnhancedDraft(BaseModel):
+    """Internal model returned to the services."""
+    platforms: Dict[str, str]
+    suggested_hashtags: List[str]
 
 # ── Service ───────────────────────────────────────────────────────
 
 class EnhancerService:
     """
-    Transforms raw concepts into platform-optimized posts using LangChain + gpt-5-nano.
+    Transforms raw concepts into platform-optimized posts using LangChain.
     """
 
     SYSTEM_PROMPT = """You are KontentPyper, an elite social media manager and copywriter.
@@ -45,13 +48,14 @@ PLATFORM RULES:
 3. youtube: This will be a video description. Include a clear hook, a short summary of the video, and a CTA.
 4. tiktok: This will be a short video caption. Extremely concise, trendy tone, max 3 hashtags.
 
-Output the EXACT finalized text that will be posted without surrounding quotes or 'Here is your text' fluff."""
+CRITICAL INSTRUCTION ON JSON OUTPUT: 
+You must strictly adhere to the expected schema. 
+Return the JSON object exactly with the `drafts` list and `suggested_hashtags` list."""
 
     def __init__(self):
         self.llm = LLMClient(
             api_key=settings.OPENAI_API_KEY,
             model="gpt-5-nano",
-          
         )
 
     async def enhance_draft(
@@ -74,11 +78,17 @@ Output the EXACT finalized text that will be posted without surrounding quotes o
         if user_context:
             user_prompt += f"ADDITIONAL CONTEXT FROM USER:\n{user_context}\n\n"
 
-        draft = await self.llm.generate_structured(
+        response = await self.llm.generate_structured(
             system_prompt=self.SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            response_model=EnhancedDraft,
+            response_model=EnhancedDraftResponse,
             temperature=1.0
         )
-
-        return draft
+        
+        # Remap the List[PlatformDraft] back into a simple Dictionary for the caller
+        platforms_dict = {d.platform.lower(): d.content for d in response.drafts}
+        
+        return EnhancedDraft(
+            platforms=platforms_dict,
+            suggested_hashtags=response.suggested_hashtags
+        )

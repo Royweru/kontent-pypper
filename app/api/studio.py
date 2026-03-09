@@ -100,10 +100,11 @@ async def publish_now(req: PublishRequest, user: CurrentUser, db: DB):
         post_result = PostResult(
             post_id=new_post.id,
             platform=r.platform,
-            status=status,
-            platform_post_url=r.post_url,
+            status="published" if r.success else "failed",
             platform_post_id=r.post_id,
-            error_message=r.error_message,
+            post_url=r.post_url,
+            error_message=r.error,
+            raw_response=r.raw
         )
         db.add(post_result)
         
