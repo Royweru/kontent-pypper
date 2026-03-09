@@ -781,6 +781,10 @@ function renderPreview(activePlatform) {
     canvas.innerHTML = buildTwitterMock(textToRender);
   } else if (activePlatform === 'linkedin') {
     canvas.innerHTML = buildLinkedInMock(textToRender);
+  } else if (activePlatform === 'youtube') {
+    canvas.innerHTML = buildYouTubeMock(textToRender);
+  } else if (activePlatform === 'tiktok') {
+    canvas.innerHTML = buildTikTokMock(textToRender);
   } else {
     // Generic fallback for others
     canvas.innerHTML = `<div class="mock-card"><div style="white-space:pre-wrap;">${esc(textToRender) || 'Start typing...'}</div></div>`;
@@ -799,18 +803,20 @@ function buildTwitterMock(text) {
   const handle = currentUser ? currentUser.email.split('@')[0] : 'creator';
   const safeText = esc(text) || 'What is happening?!';
   
-  // Create dummy images if selected in unified dropzone
   const mediaInput = document.getElementById('mediaInput');
   let mediaHtml = '';
   if (mediaInput && mediaInput.files && mediaInput.files.length > 0) {
-    mediaHtml = '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">';
-    for (let i = 0; i < mediaInput.files.length; i++) {
+    const fileCount = mediaInput.files.length;
+    const gridCount = fileCount >= 4 ? '4+' : fileCount;
+    mediaHtml = `<div class="tw-media-grid" data-count="${gridCount}">`;
+    const limit = Math.min(fileCount, 4);
+    for (let i = 0; i < limit; i++) {
         const file = mediaInput.files[i];
         const url = URL.createObjectURL(file);
         if (file.type.startsWith('video/')) {
-            mediaHtml += `<video src="${url}" style="flex:1; border-radius:16px; border:1px solid #2f3336;" controls></video>`;
+            mediaHtml += `<video src="${url}" controls></video>`;
         } else {
-            mediaHtml += `<img src="${url}" style="flex:1; border-radius:16px; border:1px solid #2f3336; object-fit:cover; max-height:250px;" />`;
+            mediaHtml += `<img src="${url}" />`;
         }
     }
     mediaHtml += '</div>';
@@ -845,7 +851,6 @@ function buildLinkedInMock(text) {
   const bio = currentUser?.bio || 'Building the future of AI automation.';
   const safeText = esc(text) || 'Start a post...';
   
-  // LinkedIn has a very specific truncation logic (~210 chars before '...see more')
   let displayText = safeText;
   let isTruncated = false;
   if (displayText.length > 210) {
@@ -853,18 +858,20 @@ function buildLinkedInMock(text) {
     isTruncated = true;
   }
 
-  // Create dummy images if selected
   const mediaInput = document.getElementById('mediaInput');
   let mediaHtml = '';
   if (mediaInput && mediaInput.files && mediaInput.files.length > 0) {
-    mediaHtml = '<div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">';
-    for (let i = 0; i < mediaInput.files.length; i++) {
+    const fileCount = mediaInput.files.length;
+    const gridCount = fileCount >= 4 ? '4+' : fileCount;
+    mediaHtml = `<div class="li-media-grid" data-count="${gridCount}">`;
+    const limit = Math.min(fileCount, 4);
+    for (let i = 0; i < limit; i++) {
       const file = mediaInput.files[i];
       const url = URL.createObjectURL(file);
       if (file.type.startsWith('video/')) {
-        mediaHtml += `<video src="${url}" style="width:100%; max-height:400px; object-fit:cover;" controls></video>`;
+        mediaHtml += `<video src="${url}" controls></video>`;
       } else {
-        mediaHtml += `<img src="${url}" style="width:100%; max-height:400px; object-fit:cover;" />`;
+        mediaHtml += `<img src="${url}" />`;
       }
     }
     mediaHtml += '</div>';
@@ -889,6 +896,88 @@ function buildLinkedInMock(text) {
         <span>👍 Like</span>
         <span>💬 Comment</span>
         <span>🔁 Repost</span>
+      </div>
+    </div>
+  `;
+}
+
+function buildYouTubeMock(text) {
+  const displayName = currentUser?.username || 'Creator Channel';
+  const safeText = esc(text) || 'Video Title goes here...';
+  
+  let displayTitle = safeText.split('\\n')[0];
+  if(displayTitle.length > 60) displayTitle = displayTitle.substring(0, 60) + '...';
+
+  const mediaInput = document.getElementById('mediaInput');
+  let mediaHtml = '';
+  if (mediaInput && mediaInput.files && mediaInput.files.length > 0) {
+      const file = mediaInput.files[0];
+      const url = URL.createObjectURL(file);
+      if (file.type.startsWith('video/')) {
+        mediaHtml = `<video src="${url}" controls preload="metadata"></video>`;
+      } else {
+        mediaHtml = `<img src="${url}" />`;
+      }
+  } else {
+      mediaHtml = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#666;">No Media Selected</div>`;
+  }
+
+  return `
+    <div class="mock-yt">
+      <div class="mock-yt-player">
+        ${mediaHtml}
+      </div>
+      <div class="mock-yt-info">
+        <div class="mock-yt-title">${displayTitle}</div>
+        <div class="mock-yt-channel">
+            <div class="mock-yt-avatar">${displayName.charAt(0)}</div>
+            <div class="mock-yt-meta">${esc(displayName)} • 0 views • Just now</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildTikTokMock(text) {
+  const displayName = currentUser?.username || 'creator';
+  const safeText = esc(text) || 'Type a caption here...';
+  
+  let caption = safeText;
+  if (caption.length > 100) caption = caption.substring(0, 100) + '...';
+
+  const mediaInput = document.getElementById('mediaInput');
+  let mediaHtml = '';
+  if (mediaInput && mediaInput.files && mediaInput.files.length > 0) {
+      const file = mediaInput.files[0];
+      const url = URL.createObjectURL(file);
+      if (file.type.startsWith('video/')) {
+        mediaHtml = `<video src="${url}" controls autoplay loop muted></video>`;
+      } else {
+        mediaHtml = `<img src="${url}" />`;
+      }
+  } else {
+      mediaHtml = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#666;background:#111;">No Video Selected</div>`;
+  }
+
+  return `
+    <div class="mock-tt">
+      <div class="mock-tt-player">
+        ${mediaHtml}
+      </div>
+      <div class="mock-tt-overlay">
+        <div class="mock-tt-info">
+          <div class="mock-tt-name">@${esc(displayName)}</div>
+          <div class="mock-tt-desc">${caption}</div>
+          <div style="display:flex;gap:8px;font-size:13px;font-weight:600;">
+            <span style="display:flex;align-items:center;gap:4px;">🎵 original sound - ${esc(displayName)}</span>
+          </div>
+        </div>
+        <div class="mock-tt-actions">
+           <div class="mock-tt-action"><div class="mock-tt-icon">❤️</div><span class="mock-tt-action-text">0</span></div>
+           <div class="mock-tt-action"><div class="mock-tt-icon">💬</div><span class="mock-tt-action-text">0</span></div>
+           <div class="mock-tt-action"><div class="mock-tt-icon">🔖</div><span class="mock-tt-action-text">0</span></div>
+           <div class="mock-tt-action"><div class="mock-tt-icon">↗️</div><span class="mock-tt-action-text">0</span></div>
+        </div>
       </div>
     </div>
   `;
