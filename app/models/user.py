@@ -58,6 +58,9 @@ class User(Base):
     telegram_bot_token = Column(String, nullable=True)
     telegram_chat_id = Column(String, nullable=True)
 
+    #Niche
+    niche = Column(String, nullable=True)
+
     # ── Relationships ─────────────────────────────────────────────
     social_connections = relationship(
         "SocialConnection", back_populates="user", cascade="all, delete-orphan"

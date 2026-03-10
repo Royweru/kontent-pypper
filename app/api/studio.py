@@ -178,7 +178,7 @@ async def agent_chat(req: ChatRequest, user: CurrentUser, db: DB):
     sys_prompt = (
         f"You are KontentPyper, a 10x expert social media strategist and world-class copywriter.\n"
         f"You are currently assisting the creator: {user.username} (Email: {user.email}).\n"
-        f"Their Bio/Niche: {user.bio or 'Not specified. Assume general tech/business professional.'}\n\n"
+        f"Their Bio/Niche: {getattr(user, 'niche', '') or 'Not specified. Assume general tech/business professional.'}\n\n"
         f"--- CURRENT METRICS & TECH STACK ---\n"
         f"Connected Platforms: {platforms_str}\n"
         f"Recent Performance: {total_views} total views, {total_eng} engagements.\n"
