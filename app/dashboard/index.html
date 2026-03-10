@@ -55,7 +55,7 @@
       <span class="nav-icon" aria-hidden="true">⟁</span> <span class="nav-label">Analytics</span>
     </button>
     <button class="nav-item"        data-page="posts"        onclick="navigate('posts')">
-      <span class="nav-icon" aria-hidden="true">≡</span> <span class="nav-label">Post History</span>
+      <span class="nav-icon" aria-hidden="true">⊟</span> <span class="nav-label">Post History</span>
     </button>
 
     <span class="nav-group-label">Account</span>
@@ -101,12 +101,12 @@
   <section class="page active" id="page-overview" aria-label="Overview">
 
     <!-- Quick Actions -->
-    <div class="quick-actions-row" style="display: flex; gap: 12px; margin-bottom: 24px;">
+    <div class="quick-actions-row">
       <button class="btn-primary" onclick="openStudioModal()" style="display: inline-flex; align-items: center; gap: 8px; width: auto; font-size: 14px;">
-        <span>+</span> Create Post
+        <span>+</span> Compose New Event
       </button>
-      <button class="btn-primary" onclick="openAutomateModal()" style="background: var(--lavender); color: var(--deep); display: inline-flex; align-items: center; gap: 8px; width: auto; font-size: 14px;">
-        <span>⚡</span> Automate Content from Scratch
+      <button class="btn-secondary" onclick="openAutomateModal()">
+        <span>⚡</span> Launch 10x Pipeline
       </button>
     </div>
 
@@ -127,7 +127,7 @@
         <div class="stat-value mono" id="stat-remaining">—</div>
         <div class="stat-delta">this billing period</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card" data-status="on">
         <div class="stat-label">Agent Status</div>
         <div class="stat-value mono accent-text">ON</div>
         <div class="stat-delta up">All systems normal</div>
@@ -144,7 +144,12 @@
       </div>
       <div class="surface-card">
         <div class="section-header">
-          <span class="section-title">Recent Activity</span>
+          <span class="section-title">
+            Recent Activity
+            <span class="status-pill" style="display:inline-flex; margin-left:8px;" id="postCountBadge">
+              <span class="status-dot"></span> <span id="postCountBadgeText">Loading</span>
+            </span>
+          </span>
         </div>
         <div class="feed" id="recentFeed" style="display:none;"></div> <!-- hidden legacy element -->
         <div class="posts-carousel-container" id="postsCarouselContainer">
@@ -514,6 +519,7 @@
 <button class="magic-wand-fab" onclick="toggleAiDrawer()" aria-label="Open AI Co-pilot">
   ✦
 </button>
+<div class="fab-tooltip">AI Co-pilot</div>
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="/dashboard/static/dashboard.js"></script>

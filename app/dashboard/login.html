@@ -17,7 +17,7 @@
 
     <!-- Wordmark -->
     <div class="wordmark">
-      <div class="wordmark-icon" aria-hidden="true"></div>
+      <img src="/logo.png" alt="KontentPyper" style="width:36px;height:36px;border-radius:7px;flex-shrink:0;" />
       <div>
         <div class="wordmark-name">KontentPyper</div>
         <div class="wordmark-tag">AGENT v0.2</div>
@@ -26,7 +26,7 @@
 
     <!-- Label -->
     <div class="glow-label" style="margin-bottom:24px;">
-      Operator access
+      Welcome back
     </div>
 
     <!-- Alert -->
@@ -48,13 +48,21 @@
 
       <div class="form-group">
         <label for="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          placeholder="••••••••••"
-          autocomplete="current-password"
-          required
-        />
+        <div class="input-wrap">
+          <input
+            id="password"
+            type="password"
+            placeholder="••••••••••"
+            autocomplete="current-password"
+            required
+          />
+          <button type="button" class="pw-toggle" id="pwToggle" aria-label="Show password">
+            <svg id="eyeIcon" viewBox="0 0 24 24">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <button type="submit" class="btn-primary" id="submitBtn">
@@ -67,5 +75,19 @@
   </main>
 
   <script src="/dashboard/static/login.js"></script>
+  <script>
+    const pwToggle = document.getElementById('pwToggle');
+    const pwInput  = document.getElementById('password');
+    const eyeIcon  = document.getElementById('eyeIcon');
+    const eyeOpen  = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+    const eyeClosed = '<path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+    if (pwToggle) {
+      pwToggle.addEventListener('click', () => {
+        const isHidden = pwInput.type === 'password';
+        pwInput.type = isHidden ? 'text' : 'password';
+        eyeIcon.innerHTML = isHidden ? eyeClosed : eyeOpen;
+      });
+    }
+  </script>
 </body>
 </html>

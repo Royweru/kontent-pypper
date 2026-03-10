@@ -12,18 +12,7 @@
 </head>
 <body>
 
-<!-- ── Navbar ────────────────────────────────────────────── -->
-<nav class="pub-nav" id="pubNav">
-  <a href="/" class="pub-nav-brand">
-    <img src="/logo.png" alt="KontentPyper" />
-    <span class="pub-nav-brand-name">KontentPyper</span>
-    <span class="pub-nav-brand-tag">AGENT</span>
-  </a>
-  <div class="pub-nav-links">
-    <a href="/" class="pub-nav-link">Home</a>
-    <a href="/dashboard/login" class="pub-nav-cta">Login</a>
-  </div>
-</nav>
+
 
 <!-- ── Background effects ───────────────────────────────── -->
 <div class="bg-grid" aria-hidden="true"></div>
@@ -34,7 +23,7 @@
   <main class="card" role="main">
 
     <div class="wordmark">
-      <img src="/logo.png" alt="" style="width:38px;height:38px;border-radius:8px;" />
+      <img src="/logo.png" alt="KontentPyper" style="width:36px;height:36px;border-radius:7px;flex-shrink:0;" />
       <div>
         <div class="wordmark-name">KontentPyper</div>
         <div class="wordmark-tag">CREATE ACCOUNT</div>
@@ -42,7 +31,7 @@
     </div>
 
     <div class="glow-label" style="margin-bottom:24px;">
-      New operator registration
+      Start automating today
     </div>
 
     <!-- Alert -->
@@ -75,25 +64,48 @@
 
       <div class="form-group">
         <label for="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          placeholder="Min 8 characters"
-          autocomplete="new-password"
-          required
-          minlength="8"
-        />
+        <div class="input-wrap">
+          <input
+            id="password"
+            type="password"
+            placeholder="Min 8 characters"
+            autocomplete="new-password"
+            required
+            minlength="8"
+          />
+          <button type="button" class="pw-toggle" id="pwToggle" aria-label="Show password">
+            <svg id="eyeIcon" viewBox="0 0 24 24">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="pw-strength-wrap" id="pwStrengthWrap" style="display:none; margin-top:-10px; margin-bottom:14px;">
+        <div class="pw-strength-bar">
+          <div class="pw-strength-fill" id="pwStrengthFill"></div>
+        </div>
+        <div class="pw-strength-label" id="pwStrengthLabel">Weak</div>
       </div>
 
       <div class="form-group">
         <label for="confirmPassword">Confirm Password</label>
-        <input
-          id="confirmPassword"
-          type="password"
-          placeholder="Re-enter password"
-          autocomplete="new-password"
-          required
-        />
+        <div class="input-wrap">
+          <input
+            id="confirmPassword"
+            type="password"
+            placeholder="Re-enter password"
+            autocomplete="new-password"
+            required
+          />
+          <button type="button" class="pw-toggle" id="pwToggle2" aria-label="Show password">
+            <svg id="eyeIcon2" viewBox="0 0 24 24">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <button type="submit" class="btn-primary" id="submitBtn">
@@ -112,5 +124,51 @@
 </div>
 
 <script src="/static/signup.js"></script>
+<script>
+  // Password strength meter
+  const pwField = document.getElementById('password');
+  const wrap    = document.getElementById('pwStrengthWrap');
+  const fill    = document.getElementById('pwStrengthFill');
+  const label   = document.getElementById('pwStrengthLabel');
+  const levels  = [
+    { min: 0,  label: 'Weak',   color: '#ff4e6a', width: '25%'  },
+    { min: 6,  label: 'Fair',   color: '#f0a030', width: '50%'  },
+    { min: 10, label: 'Good',   color: '#c8f951', width: '75%'  },
+    { min: 14, label: 'Strong', color: '#1affd5', width: '100%' },
+  ];
+  if (pwField) {
+    pwField.addEventListener('input', () => {
+      const v = pwField.value;
+      if (!v) { wrap.style.display = 'none'; return; }
+      wrap.style.display = 'flex';
+      const score = [
+        v.length >= 8, v.length >= 12,
+        /[A-Z]/.test(v), /[0-9]/.test(v),
+        /[^A-Za-z0-9]/.test(v)
+      ].filter(Boolean).length;
+      const lv = score <= 1 ? levels[0] : score <= 2 ? levels[1]
+               : score <= 3 ? levels[2] : levels[3];
+      fill.style.width     = lv.width;
+      fill.style.background= lv.color;
+      label.textContent    = lv.label;
+      label.style.color    = lv.color;
+    });
+  }
+
+  // Eye toggle — signup password fields
+  ['pwToggle','pwToggle2'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const input = btn.closest('.input-wrap').querySelector('input');
+    const svg   = btn.querySelector('svg');
+    const open  = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+    const closed= '<path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+    btn.addEventListener('click', () => {
+      const hidden = input.type === 'password';
+      input.type = hidden ? 'text' : 'password';
+      svg.innerHTML = hidden ? closed : open;
+    });
+  });
+</script>
 </body>
 </html>

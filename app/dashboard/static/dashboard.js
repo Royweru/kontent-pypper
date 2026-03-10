@@ -136,9 +136,15 @@ async function loadOverview() {
   const limit     = currentUser.posts_limit ?? 10;
   const remaining = limit - used;
 
-  document.getElementById('stat-posts').textContent     = used;
-  document.getElementById('stat-remaining').textContent = remaining;
-  document.getElementById('stat-plan').textContent      = `ON ${currentUser.plan.toUpperCase()} PLAN`;
+  if (used === 0) {
+    document.getElementById('stat-posts').innerHTML = `<span style="color:var(--text-muted); font-size:24px;">0</span>`;
+    document.getElementById('stat-plan').innerHTML  = `<a href="#" onclick="openStudioModal()" style="color:var(--accent);text-decoration:none;font-weight:500;">Create first post →</a>`;
+    document.getElementById('stat-remaining').textContent = remaining;
+  } else {
+    document.getElementById('stat-posts').textContent     = used;
+    document.getElementById('stat-remaining').textContent = remaining;
+    document.getElementById('stat-plan').textContent      = `ON ${currentUser.plan.toUpperCase()} PLAN`;
+  }
 
   // Connections count
   try {
@@ -153,15 +159,29 @@ async function loadOverview() {
   loadRecentPosts();
 }
 
-// Simple deterministic bar chart from a fixed seed
+// Deterministic bar chart with X-axis labels
 function renderBarChart() {
   const wrap = document.getElementById('chartBars');
   if (!wrap) return;
   // Simulated engagement values (replaced with real data in Phase 8)
   const vals = [38, 62, 44, 79, 55, 91, 48, 73, 87, 61, 95, 68];
-  wrap.innerHTML = vals.map((h, i) =>
-    `<div class="chart-bar" style="height:${h}%; animation-delay:${i * 0.04}s;"></div>`
+  
+  let barsHtml = vals.map((h, i) => 
+    `<div class="chart-bar" style="height:${h}%; animation-delay:${i * 0.04}s;" title="${h * 12} Engagements"></div>`
   ).join('');
+  
+  let labelsHtml = vals.map((_, i) => 
+    `<div style="font-size:9.5px; color:var(--text-muted); font-family:var(--font-mono); text-align:center;">W${i+1}</div>`
+  ).join('');
+  
+  wrap.innerHTML = `
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; height:110px; padding-bottom:8px;">
+      ${barsHtml}
+    </div>
+    <div style="display:flex; justify-content:space-between; border-top:1px solid var(--border-hi); padding-top:8px;">
+      ${labelsHtml}
+    </div>
+  `;
 }
 
 // ── Posts Carousel & History ────────────────────────────────────────
@@ -210,8 +230,16 @@ async function loadRecentPosts() {
     const r = await apiFetch('/posts?limit=10');
     if (!r.ok) throw new Error('API issue');
     const posts = await r.json();
+    const badgeText = document.getElementById('postCountBadgeText');
+    if (badgeText) badgeText.textContent = posts.length + ' POSTS';
+
     if (!posts.length) {
-      cCont.innerHTML = `<div class="empty-state" style="width:100%; border:1px dashed var(--border); border-radius:12px; padding:40px;">No posts yet — head to the Studio</div>`;
+      cCont.innerHTML = `<div class="empty-state" style="width:100%; border:1px solid var(--border-med); border-radius:12px; padding:40px; background:var(--surface2);">
+        <div style="font-size:32px; margin-bottom:16px; opacity:0.5;">✦</div>
+        <div style="color:var(--text); font-weight:500; margin-bottom:8px; font-size:16px; letter-spacing:-0.01em;">No Pipeline Activity Yet</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-bottom:24px;">Your recent scheduled or published posts will appear here.</div>
+        <button class="btn-secondary" onclick="openStudioModal()">Create First Post</button>
+      </div>`;
       return;
     }
     cCont.innerHTML = posts.map(buildCarouselCard).join('');

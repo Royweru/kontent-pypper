@@ -16,50 +16,62 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Core palette */
-  --deep:      #111118;
-  --base:      #16161f;
-  --surface:   #1c1c2a;
-  --surface2:  #232336;
-  --border:    rgba(200, 249, 81, 0.08);
-  --border-hi: rgba(200, 249, 81, 0.22);
+  /*Depth layers*/
+  --deep:      #0e0e14;
+  --base:      #121219;
+  --surface:   #181824;
+  --surface2:  #1e1e2e;
+  --surface3:  #242438;
 
-  /* Primary accent (lime-chartreuse) */
-  --accent:    #c8f951;
-  --accent-dim:#a8d63e;
-  --accent-glow: rgba(200, 249, 81, 0.10);
+  /*Borders*/
+  --border:    rgba(200, 249, 81, 0.07);
+  --border-hi: rgba(200, 249, 81, 0.20);
+  --border-med:rgba(200, 249, 81, 0.12);
 
-  /* Secondary accent (lavender) */
-  --lavender:     #8b7ec8;
-  --lavender-dim: rgba(139, 126, 200, 0.15);
+  /*Primary accent — lime-chartreuse*/
+  --accent:      #c8f951;
+  --accent-hover:#d6ff5b;
+  --accent-dim:  #a0cc35;
+  --accent-glow: rgba(200, 249, 81, 0.09);
+  --accent-glow-hi: rgba(200, 249, 81, 0.16);
 
-  /* Amber (warnings) */
-  --amber:     #f59e0b;
-  --amber-dim: rgba(245,158,11,0.15);
+  /*Secondary — muted lavender (UI only, NEVER CTAs)*/
+  --lavender:     #5c5490;
+  --lavender-dim: rgba(92, 84, 144, 0.12);
+  --lavender-border: rgba(92, 84, 144, 0.25);
 
-  /* Text */
-  --text:      #e8ecf2;
-  --text-muted:#8a8fa0;
-  --text-dim:  #4a4e62;
+  /*Tertiary — electric cyan (data/live status only)*/
+  --cyan:      #1affd5;
+  --cyan-dim:  rgba(26, 255, 213, 0.08);
+  --cyan-border: rgba(26, 255, 213, 0.20);
 
-  /* Status */
+  /*Text hierarchy — 4 levels*/
+  --text:       #eceff5;
+  --text-muted: #6e7385;
+  --text-dim:   #3e4156;
+  --text-faint: #2a2c3d;
+
+  /*Semantic*/
   --success:   #c8f951;
-  --warning:   #f59e0b;
-  --danger:    #f87171;
+  --warning:   #f0a030;
+  --danger:    #ff4e6a;
+  --danger-dim:rgba(255, 78, 106, 0.12);
 
-  /* Typography */
+  /*Typography*/
   --font-display: 'Space Grotesk', system-ui, sans-serif;
   --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
 
-  /* Sizing */
-  --sidebar-w: 248px;
-  --topbar-h:  58px;
-  --radius:    10px;
-  --radius-sm: 6px;
-  --radius-lg: 16px;
+  /*Sizing*/
+  --sidebar-w:  252px;
+  --topbar-h:   62px;
+  --radius:     12px;
+  --radius-sm:  7px;
+  --radius-lg:  18px;
+  --radius-xl:  24px;
 
-  /* Transitions */
-  --ease:      cubic-bezier(0.16, 1, 0.3, 1);
+  /*Transitions*/
+  --ease:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
 }
 
 html, body {
