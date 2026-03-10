@@ -1454,41 +1454,58 @@ function startWorkflow() {
   
   if (!btn || !tracker || !log) return;
   
-  // Actually we shouldn't block just on feeds, since they can use the default global
-  // But for the sake of demo:
   if (userFeeds.length === 0) {
     toast('Please add at least one feed first', 'warning');
-    return; // we could let it pass with default news but let us enforce it for now
+    return;
   }
   
   btn.disabled = true;
   tracker.style.display = 'block';
-  log.innerHTML = '';
+  log.innerHTML = `<div class="feed-item" style="font-size:13px; color:var(--text-2);">
+    <span style="color:var(--accent); margin-right:8px;">⚡</span> Connecting to LangGraph engine...
+  </div>`;
   
-  const steps = [
-    { msg: 'Initiating LangGraph pipeline...', delay: 500 },
-    { msg: 'Fetching articles from your feeds...', delay: 1500 },
-    { msg: 'Agent grading articles for relevance...', delay: 3000 },
-    { msg: 'Drafting text for Twitter, LinkedIn, and TikTok...', delay: 5000 },
-    { msg: 'Generating video assets...', delay: 8000 },
-    { msg: 'Workflow complete. Assets ready for review!', delay: 10000 }
-  ];
+  const token = localStorage.getItem('kontent_token');
+  // Pass token in URL for SSE auth since EventSource doesn't support headers natively easily
+  const es = new EventSource(`/api/v1/workflow/run?token=${token || ''}`);
   
-  steps.forEach(step => {
-    setTimeout(() => {
+  es.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+    
+    if (data.status === 'DONE') {
+      es.close();
+      btn.disabled = false;
+      toast('Content automation finished!', 'success');
+      
       const el = document.createElement('div');
       el.className = 'feed-item';
       el.style.fontSize = '13px';
       el.style.color = 'var(--text-2)';
-      el.innerHTML = `<span style="color:var(--accent); margin-right:8px;">✓</span> ${step.msg}`;
+      el.innerHTML = `<span style="color:var(--success); margin-right:8px;">✓</span> Workflow complete. Assets ready for review!`;
       log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
       
-      if (step.msg.includes('complete')) {
-        btn.disabled = false;
-        toast('Content automation finished!', 'success');
-      }
-    }, step.delay);
-  });
+      // Store in memory for HITL screen if needed later
+      window.latestWorkflowResult = data;
+      return;
+    }
+    
+    // Log the new status or step
+    const el = document.createElement('div');
+    el.className = 'feed-item';
+    el.style.fontSize = '13px';
+    el.style.color = 'var(--text-2)';
+    el.innerHTML = `<span style="color:var(--accent); margin-right:8px;">✓</span> ${data.status || 'Processing...'}`;
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+  };
+
+  es.onerror = function(err) {
+    es.close();
+    btn.disabled = false;
+    toast('Pipeline execution error', 'error');
+    console.error('SSE Error:', err);
+  };
 }
 
 
