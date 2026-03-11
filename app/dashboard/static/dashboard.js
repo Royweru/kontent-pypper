@@ -171,14 +171,14 @@ function renderBarChart() {
   ).join('');
   
   let labelsHtml = vals.map((_, i) => 
-    `<div style="font-size:9.5px; color:var(--text-muted); font-family:var(--font-mono); text-align:center;">W${i+1}</div>`
+    `<div style="flex:1; font-size:9.5px; color:var(--text-muted); font-family:var(--font-mono); text-align:center;">W${i+1}</div>`
   ).join('');
   
   wrap.innerHTML = `
-    <div style="display:flex; align-items:flex-end; justify-content:space-between; height:110px; padding-bottom:8px;">
+    <div style="display:flex; width:100%; align-items:flex-end; justify-content:space-between; height:110px; padding-bottom:8px;">
       ${barsHtml}
     </div>
-    <div style="display:flex; justify-content:space-between; border-top:1px solid var(--border-hi); padding-top:8px;">
+    <div style="display:flex; width:100%; justify-content:space-between; border-top:1px solid var(--border-hi); padding-top:8px;">
       ${labelsHtml}
     </div>
   `;
