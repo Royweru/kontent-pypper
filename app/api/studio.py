@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.api.deps import CurrentUser, DB
+from app.core.deps import CurrentUser, DB
 from app.services.ai.enhancer import EnhancerService
 from app.services.ai.llm_client import LLMClient
 from app.services.social_service import SocialService

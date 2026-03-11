@@ -10,7 +10,7 @@ from typing import List
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 
-from app.api.deps import CurrentUser
+from app.core.deps import CurrentUser
 from app.core.config import settings
 
 router = APIRouter()

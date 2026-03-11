@@ -43,7 +43,7 @@ async def get_news_feed(
 
 from pydantic import BaseModel
 from sqlalchemy import delete
-from app.api.deps import get_current_user
+from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.content import ContentSource
 

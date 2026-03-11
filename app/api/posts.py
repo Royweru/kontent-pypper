@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import CurrentUser, DB
+from app.core.deps import CurrentUser, DB
 from app.models.post import Post, PostResult
 
 router = APIRouter()

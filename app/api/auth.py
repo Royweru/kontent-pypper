@@ -10,7 +10,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.api.deps import DB, CurrentUser
+from app.core.deps import DB, CurrentUser
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.config import settings
 from app.models.user import User

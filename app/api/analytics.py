@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select, func, desc
 
-from app.api.deps import CurrentUser, DB
+from app.core.deps import CurrentUser, DB
 from app.models.post import Post, PostResult
 from app.models.analytics import PostAnalytics, UserAnalyticsSummary
 

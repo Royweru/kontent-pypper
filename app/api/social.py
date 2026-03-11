@@ -6,7 +6,7 @@ Handles OAuth initialization, callbacks, and platform connections listing.
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy import delete
-from app.api.deps import CurrentUser, DB
+from app.core.deps import CurrentUser, DB
 from app.services.oauth_service import OAuthService
 from app.services.social_service import SocialService
 from app.models.social import SocialConnection
