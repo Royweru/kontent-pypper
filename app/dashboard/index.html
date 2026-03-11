@@ -289,21 +289,23 @@
 
   <!-- ── News Feed / Feeds ──────────────────────────────────────── -->
   <section class="page" id="page-news" aria-label="News Feed">
-    <div class="section-header" style="margin-bottom:20px; display:flex; align-items:center; justify-content:space-between;">
+    <div class="section-header" style="margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
       <div>
         <span class="glow-label">Feeds</span>
         <span class="muted" style="font-size:12px; display:block; margin-top:4px;">Manage your content sources</span>
       </div>
-      <button class="btn-primary" onclick="openExploreFeedsModal()" style="width:auto; margin-top:0; padding:10px 16px;">
-        <span>+</span> Add Feed
-      </button>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span id="feedTierBadge" class="feed-tier-badge" style="display:none;"></span>
+        <button class="btn-primary" onclick="openExploreFeedsModal()" style="width:auto; margin-top:0; padding:10px 16px;">
+          + Add Feed
+        </button>
+      </div>
     </div>
-    
+
     <!-- Active Feeds -->
     <div style="margin-bottom: 32px;">
-      <h3 style="font-size:14px; font-weight:600; color:var(--text); margin-bottom:16px;">Your Active Feeds</h3>
-      <div class="platform-grid" id="activeFeedsGrid">
-        <!-- populated by js -->
+      <h3 style="font-size:14px; font-weight:600; color:var(--text); margin-bottom:16px;">Your Active Feeds <span id="activeFeedCount" class="muted" style="font-weight:400; font-size:12px;"></span></h3>
+      <div class="feed-cards-grid" id="activeFeedsGrid">
         <div class="empty-state" style="grid-column: 1 / -1; padding: 20px;">No feeds added yet. Click "Add Feed" to start.</div>
       </div>
     </div>
@@ -440,30 +442,55 @@
 
   <!-- ── Explore Feeds Modal ────────────────────────────────────── -->
   <div class="studio-modal-overlay" id="exploreFeedsModalOverlay">
-    <div class="studio-modal" style="max-width: 800px; height: 80vh;">
+    <div class="studio-modal" style="max-width: 960px; height: 85vh;">
       <div class="studio-modal-header">
         <div class="studio-modal-title">Explore Feeds</div>
-        <button class="studio-modal-close" onclick="closeExploreFeedsModal()">×</button>
+        <button class="studio-modal-close" onclick="closeExploreFeedsModal()">x</button>
       </div>
-      <div class="studio-modal-body" style="flex-direction: column; padding: 24px;">
-        <div class="preview-tabs" id="exploreFeedsTabs" style="justify-content: center; margin-bottom: 24px;">
-          <button class="preview-tab active" onclick="switchFeedCategory('Tech')">Tech</button>
-          <button class="preview-tab" onclick="switchFeedCategory('Business')">Business</button>
-          <button class="preview-tab" onclick="switchFeedCategory('News')">News</button>
-          <button class="preview-tab" onclick="switchFeedCategory('Entertainment')">Entertainment</button>
-        </div>
-        
-        <div class="platform-grid" id="exploreFeedsGrid" style="overflow-y: auto; flex: 1; align-content: flex-start;">
-          <!-- Items populated by JS -->
+      <div class="studio-modal-body" style="flex-direction: column; padding: 0; overflow: hidden;">
+
+        <!-- Category chips bar -->
+        <div class="explore-chips-bar" id="exploreCategoryChips">
+          <!-- JS injects category buttons from catalogue API -->
+          <div class="skeleton" style="height:32px; width:100%;"></div>
         </div>
 
-        <div style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 24px;">
-          <div style="font-size: 13px; font-weight: 500; margin-bottom: 12px; color: var(--text);">Or add a custom RSS feed URL:</div>
+        <!-- RSS / Reddit sub-tabs -->
+        <div class="explore-sub-tabs">
+          <button class="explore-sub-tab active" id="subTabRss" onclick="switchSourceType('rss')">RSS Feeds</button>
+          <button class="explore-sub-tab" id="subTabReddit" onclick="switchSourceType('reddit')">Subreddits</button>
+        </div>
+
+        <!-- Main body: grid + optional preview -->
+        <div class="explore-body">
+          <div class="explore-grid-wrap">
+            <div class="feed-cards-grid" id="exploreFeedsGrid">
+              <!-- catalogue cards injected by JS -->
+            </div>
+          </div>
+
+          <!-- Live preview panel (opens on card click) -->
+          <div class="explore-preview" id="explorePreviewPanel" style="display:none;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+              <span style="font-family:var(--font-mono); font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-dim);">Live Preview</span>
+              <button class="studio-modal-close" onclick="closePreviewPanel()" style="position:static; font-size:16px;">x</button>
+            </div>
+            <div id="explorePreviewContent" class="feed" style="overflow-y:auto; flex:1;">
+              <div class="skeleton" style="height:60px; margin:4px 0;"></div>
+              <div class="skeleton" style="height:60px; margin:4px 0;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Custom RSS input -->
+        <div style="padding: 16px 24px; border-top: 1px solid var(--border);">
+          <div style="font-size: 13px; font-weight: 500; margin-bottom: 8px; color: var(--text);">Or add a custom RSS feed URL:</div>
           <div style="display: flex; gap: 12px;">
             <input type="text" id="customRssUrl" placeholder="https://example.com/feed.xml" style="flex: 1; padding: 12px; background: var(--base); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); outline: none;">
             <button class="btn-primary" onclick="addCustomFeed()" style="width: auto; margin-top: 0; padding: 0 20px;">Add Feed</button>
           </div>
         </div>
+
       </div>
     </div>
   </div>

@@ -160,3 +160,150 @@ async def remove_feed_source(
     await db.delete(result)
     await db.commit()
     return {"status": "success"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Curated Catalogue & Live Previews
+# ---------------------------------------------------------------------------
+
+@router.get("/catalogue")
+async def get_feed_catalogue(
+    category: Optional[str] = Query(None, description="Filter by category slug (tech, business, news, entertainment, real_estate, science, art_media)"),
+):
+    """
+    Returns the curated feed catalogue for the Explore Feeds modal.
+
+    No authentication required — used to populate the discover UI.
+
+    Query params:
+      category (optional): one of tech | business | news | entertainment | real_estate | science | art_media
+                           If omitted, returns all categories + all feeds.
+
+    Response shape:
+      {
+        "categories": [{slug, label, icon}, ...],
+        "rss":        [{name, url, logo_url, category, description, source_type}, ...],
+        "subreddits": [{name, subreddit, logo_url, category, description, source_type}, ...]
+      }
+
+    Pipeline integration (Phase 6):
+      The 10x Pipeline will call this endpoint to offer users a source picker
+      before auto-fetching and scoring content for batch generation.
+    """
+    from app.data.feed_catalogue import get_full_catalogue, get_catalogue_by_category
+    if category:
+        return get_catalogue_by_category(category)
+    return get_full_catalogue()
+
+
+@router.get("/feed/preview")
+async def preview_rss_feed(
+    url: str = Query(..., description="RSS feed URL to preview"),
+):
+    """
+    Live proxy: fetches up to 10 articles from any RSS URL and returns
+    normalized cards (thumbnail, title, snippet, pubDate, source_url).
+
+    No authentication required.
+
+    Used by:
+      - Explore Feeds modal: show sample articles before user adds a feed.
+      - Autonomous pipeline (Phase 6): seed test articles for a new source.
+
+    Returns a list of article cards:
+      [{title, url, snippet, image_url, published_date, source_url}]
+    """
+    import re
+    import feedparser
+    from time import mktime
+    from datetime import datetime
+
+    try:
+        feed = feedparser.parse(url)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch feed: {exc}")
+
+    if not feed.entries:
+        return []
+
+    articles = []
+    for entry in feed.entries[:10]:
+        pub_date = None
+        if hasattr(entry, "published_parsed") and entry.published_parsed:
+            pub_date = datetime.fromtimestamp(mktime(entry.published_parsed)).isoformat()
+
+        snippet = ""
+        if hasattr(entry, "summary"):
+            snippet = re.sub(r"<[^>]+>", "", entry.summary)[:300]
+
+        image_url = None
+        if hasattr(entry, "media_thumbnail") and entry.media_thumbnail:
+            image_url = entry.media_thumbnail[0].get("url")
+        elif hasattr(entry, "media_content") and entry.media_content:
+            image_url = entry.media_content[0].get("url")
+
+        articles.append({
+            "title":          entry.title,
+            "url":            entry.link,
+            "snippet":        snippet,
+            "image_url":      image_url,
+            "published_date": pub_date,
+            "source_url":     url,
+        })
+
+    return articles
+
+
+@router.get("/subreddit/preview")
+async def preview_subreddit(
+    sub: str = Query(..., description="Subreddit name WITHOUT r/ prefix"),
+    limit: int = Query(10, ge=1, le=25),
+):
+    """
+    Returns hot posts from any public subreddit.
+
+    No authentication required.
+
+    Used by:
+      - Explore Feeds modal Reddit tab: preview posts before adding a subreddit.
+      - Autonomous pipeline (Phase 6): live source picker for content generation.
+
+    Returns a list of post cards:
+      [{title, url, snippet, image_url, published_date, score, subreddit}]
+    """
+    from app.services.ingest.reddit_fetcher import get_reddit_client
+    from datetime import datetime
+
+    reddit = get_reddit_client()
+    if not reddit:
+        raise HTTPException(
+            status_code=503,
+            detail="Reddit integration is not configured on this server.",
+        )
+
+    posts = []
+    try:
+        subreddit = reddit.subreddit(sub)
+        for submission in subreddit.hot(limit=limit):
+            if submission.stickied:
+                continue
+
+            image_url = None
+            thumb = getattr(submission, "thumbnail", "")
+            if thumb and thumb.startswith("http"):
+                image_url = thumb
+
+            posts.append({
+                "title":          submission.title,
+                "url":            submission.url,
+                "snippet":        (submission.selftext[:300] if submission.selftext else ""),
+                "image_url":      image_url,
+                "published_date": datetime.fromtimestamp(submission.created_utc).isoformat(),
+                "score":          submission.score,
+                "subreddit":      submission.subreddit.display_name,
+            })
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch r/{sub}: {exc}")
+
+    return posts
+

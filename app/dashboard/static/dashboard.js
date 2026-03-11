@@ -1338,153 +1338,432 @@ function openAutomateModal() {
   const modal = document.getElementById('automateModalOverlay');
   if (modal) modal.classList.add('open');
 }
-
 function closeAutomateModal() {
   const modal = document.getElementById('automateModalOverlay');
   if (modal) modal.classList.remove('open');
 }
 
-let activeFeedCategory = 'Tech';
+// ── Explore Feeds Modal (Phase 5) ─────────────────────────────────
 
-function openExploreFeedsModal() {
-  const modal = document.getElementById('exploreFeedsModalOverlay');
-  if (modal) {
-    modal.classList.add('open');
-    renderExploreFeeds();
+let catalogueCache = null;          // cached catalogue API response
+let activeFeedCategory = 'tech';    // active category slug
+let activeSourceType   = 'rss';     // 'rss' or 'reddit'
+let userFeeds = [];                 // user's saved feed sources
+
+async function loadCatalogue() {
+  if (catalogueCache) return catalogueCache;
+  try {
+    const r = await apiFetch('/news/catalogue');
+    if (r.ok) {
+      catalogueCache = await r.json();
+    } else {
+      catalogueCache = { categories: [], rss: [], subreddits: [] };
+    }
+  } catch(e) {
+    catalogueCache = { categories: [], rss: [], subreddits: [] };
   }
+  return catalogueCache;
+}
+
+function renderCategoryChips(catalogue) {
+  const bar = document.getElementById('exploreCategoryChips');
+  if (!bar) return;
+  bar.innerHTML = catalogue.categories.map(c => {
+    const isActive = c.slug === activeFeedCategory;
+    return `<button class="explore-chip${isActive ? ' active' : ''}" onclick="switchFeedCategory('${esc(c.slug)}')">${esc(c.label)}</button>`;
+  }).join('');
+}
+
+async function openExploreFeedsModal() {
+  const modal = document.getElementById('exploreFeedsModalOverlay');
+  if (modal) modal.classList.add('open');
+  const catalogue = await loadCatalogue();
+  renderCategoryChips(catalogue);
+  renderExploreFeeds();
 }
 
 function closeExploreFeedsModal() {
   const modal = document.getElementById('exploreFeedsModalOverlay');
   if (modal) modal.classList.remove('open');
+  closePreviewPanel();
 }
 
-function switchFeedCategory(category) {
-  activeFeedCategory = category;
-  
-  const tabs = document.getElementById('exploreFeedsTabs');
-  if (tabs) {
-    Array.from(tabs.children).forEach(btn => {
-      if (btn.textContent.trim() === category) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
+function switchFeedCategory(slug) {
+  activeFeedCategory = slug;
+  const bar = document.getElementById('exploreCategoryChips');
+  if (bar) {
+    Array.from(bar.children).forEach(btn => {
+      btn.classList.toggle('active', btn.textContent.trim() === (catalogueCache?.categories.find(c => c.slug === slug)?.label || ''));
     });
   }
-  
   renderExploreFeeds();
 }
 
-const mockFeeds = {
-  'Tech': [
-    { title: 'TechCrunch', url: 'https://techcrunch.com/feed/' },
-    { title: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
-    { title: 'Wired', url: 'https://www.wired.com/feed/rss' }
-  ],
-  'Business': [
-    { title: 'Forbes', url: 'https://www.forbes.com/business/feed/' },
-    { title: 'Bloomberg', url: 'https://www.bloomberg.com/feed' }
-  ],
-  'News': [
-    { title: 'Reuters', url: 'https://www.reuters.com/tools/rss' },
-    { title: 'BBC', url: 'http://feeds.bbci.co.uk/news/rss.xml' }
-  ],
-  'Entertainment': [
-    { title: 'Variety', url: 'https://variety.com/feed/' },
-    { title: 'IGN', url: 'https://ign.com/feed.xml' }
-  ]
-};
-
-let userFeeds = [];
+function switchSourceType(type) {
+  activeSourceType = type;
+  document.getElementById('subTabRss')?.classList.toggle('active', type === 'rss');
+  document.getElementById('subTabReddit')?.classList.toggle('active', type === 'reddit');
+  renderExploreFeeds();
+}
 
 function renderExploreFeeds() {
   const grid = document.getElementById('exploreFeedsGrid');
-  if (!grid) return;
-  
-  const feeds = mockFeeds[activeFeedCategory] || [];
-  grid.innerHTML = feeds.map(f => {
-    const isAdded = userFeeds.some(uf => uf.url === f.url);
+  if (!grid || !catalogueCache) return;
+
+  let items = [];
+  if (activeSourceType === 'rss') {
+    items = (catalogueCache.rss || []).filter(f => f.category === activeFeedCategory);
+  } else {
+    items = (catalogueCache.subreddits || []).filter(f => f.category === activeFeedCategory);
+  }
+
+  if (!items.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">No feeds in this category yet.</div>';
+    return;
+  }
+
+  grid.innerHTML = items.map(f => {
+    const feedUrl = f.url || '';
+    const isAdded = userFeeds.some(uf => (uf.url && uf.url === feedUrl) || (uf.subreddit_name && f.subreddit && uf.subreddit_name === f.subreddit));
+    const logoSrc = f.logo_url || '';
+    const badgeClass = f.source_type === 'reddit' ? 'reddit' : 'rss';
+    const badgeLabel = f.source_type === 'reddit' ? 'Reddit' : 'RSS';
+    const previewFn = f.source_type === 'reddit'
+      ? `previewSubreddit('${esc(f.subreddit || '')}')`
+      : `previewFeed('${esc(feedUrl)}')`;
+    const toggleFn = `toggleFeed(${JSON.stringify({
+      name: f.name,
+      url: feedUrl,
+      source_type: f.source_type,
+      logo_url: logoSrc,
+      category: f.category,
+      subreddit: f.subreddit || ''
+    }).replace(/'/g, "\\'")})`;
+
     return `
-      <div class="platform-tile" style="display:flex; flex-direction:column; align-items:center; padding:16px;">
-        <div style="font-size:24px; margin-bottom:8px;">📰</div>
-        <div style="font-weight:600; font-size:13px; margin-bottom:12px; color:var(--text);">${esc(f.title)}</div>
-        <button class="btn-ghost" style="margin-top:auto; font-size:11px; padding:6px 12px; ${isAdded ? 'border-color:var(--accent); color:var(--accent);' : ''}" 
-                onclick="toggleFeed('${esc(f.title)}', '${esc(f.url)}')">
-          ${isAdded ? 'Added' : 'Add Feed'}
-        </button>
-      </div>
-    `;
+      <div class="feed-card${isAdded ? ' added' : ''}">
+        <div class="feed-card-head">
+          ${logoSrc ? `<img class="feed-card-logo" src="${esc(logoSrc)}" alt="" onerror="this.style.display='none'">` : ''}
+          <span class="feed-card-name">${esc(f.name)}</span>
+        </div>
+        <div class="feed-card-desc">${esc(f.description || '')}</div>
+        <div class="feed-card-footer">
+          <span class="source-badge ${badgeClass}">${badgeLabel}</span>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-ghost" style="margin:0; padding:4px 10px; font-size:11px; width:auto;" onclick="${previewFn}">Preview</button>
+            <button class="btn-ghost" style="margin:0; padding:4px 10px; font-size:11px; width:auto; ${isAdded ? 'border-color:var(--accent); color:var(--accent);' : ''}" 
+                    onclick='${toggleFn}'>${isAdded ? 'Added' : 'Add'}</button>
+          </div>
+        </div>
+      </div>`;
   }).join('');
 }
 
-function renderActiveFeeds() {
-  const grid = document.getElementById('activeFeedsGrid');
-  if (!grid) return;
-  
-  if (!userFeeds.length) {
-    grid.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1; padding: 20px;">No feeds added yet. Click "Add Feed" to start.</div>';
-  } else {
-    grid.innerHTML = userFeeds.map(f => `
-      <div class="platform-tile connected" style="display:flex; flex-direction:column; align-items:center; padding:16px;">
-        <div style="font-size:24px; margin-bottom:8px;">📰</div>
-        <div style="font-weight:600; font-size:13px; margin-bottom:12px; color:var(--text);">${esc(f.title)}</div>
-        <button class="btn-ghost" style="margin-top:auto; font-size:11px; padding:6px 12px; color:var(--danger); border-color:var(--border);" 
-                onclick="removeFeed('${esc(f.url)}')">Remove</button>
-      </div>
-    `).join('');
-  }
-}
+// ── Feed CRUD (correct API paths) ─────────────────────────────────
 
-function toggleFeed(title, url) {
-  const idx = userFeeds.findIndex(f => f.url === url);
-  if (idx > -1) {
-    userFeeds.splice(idx, 1);
-    toast(`Removed ${title} from your feeds`);
-  } else {
-    const isPro = currentUser && currentUser.plan !== 'free';
-    if (!isPro && userFeeds.length >= 5) {
-      toast('Free plan limited to 5 feeds. Please upgrade.', 'error');
-      return;
+window.toggleFeed = async function(feedObj) {
+  if (typeof feedObj === 'string') feedObj = JSON.parse(feedObj);
+
+  // Check if already added
+  const existing = userFeeds.find(uf =>
+    (uf.url && uf.url === feedObj.url) ||
+    (uf.subreddit_name && feedObj.subreddit && uf.subreddit_name === feedObj.subreddit)
+  );
+
+  if (existing) {
+    // Remove
+    try {
+      await apiFetch(`/news/feed/sources/${existing.id}`, { method: 'DELETE' });
+      userFeeds = userFeeds.filter(f => f.id !== existing.id);
+      toast(`Removed ${feedObj.name}`);
+    } catch(e) {
+      toast('Failed to remove feed', 'error');
     }
-    userFeeds.push({ title, url });
-    toast(`Added ${title} to your feeds`, 'success');
+  } else {
+    // Add - check tier limits
+    const isPro = currentUser && currentUser.plan !== 'free';
+    const rssCount = userFeeds.filter(f => f.source_type !== 'reddit').length;
+    const redditCount = userFeeds.filter(f => f.source_type === 'reddit').length;
+
+    if (!isPro) {
+      if (feedObj.source_type === 'reddit' && redditCount >= 2) {
+        toast('Free plan: max 2 subreddits. Upgrade to Pro for unlimited.', 'error');
+        return;
+      }
+      if (feedObj.source_type !== 'reddit' && rssCount >= 5) {
+        toast('Free plan: max 5 RSS feeds. Upgrade to Pro for unlimited.', 'error');
+        return;
+      }
+    }
+
+    const body = {
+      title: feedObj.name,
+      url: feedObj.url || '',
+      source_type: feedObj.source_type || 'rss',
+      logo_url: feedObj.logo_url || '',
+      category: feedObj.category || '',
+    };
+    if (feedObj.subreddit) body.subreddit_name = feedObj.subreddit;
+
+    try {
+      const r = await apiFetch('/news/feed/sources', {
+        method: 'POST',
+        body: JSON.stringify(body)
+      });
+      if (r.ok) {
+        const newSource = await r.json();
+        userFeeds.push(newSource);
+        toast(`Added ${feedObj.name}`, 'success');
+      } else {
+        const err = await r.json().catch(() => ({}));
+        toast(err.detail || 'Failed to add feed', 'error');
+      }
+    } catch(e) {
+      toast('Network error adding feed', 'error');
+    }
   }
   renderExploreFeeds();
   renderActiveFeeds();
-}
+  updateTierBadge();
+};
 
-function removeFeed(url) {
-  userFeeds = userFeeds.filter(f => f.url !== url);
-  renderActiveFeeds();
-  toast('Feed removed');
-}
+window.removeFeed = async function(sourceId) {
+  try {
+    await apiFetch(`/news/feed/sources/${sourceId}`, { method: 'DELETE' });
+    userFeeds = userFeeds.filter(f => f.id !== sourceId);
+    renderActiveFeeds();
+    renderExploreFeeds();
+    updateTierBadge();
+    toast('Feed removed');
+  } catch(e) {
+    toast('Failed to remove', 'error');
+  }
+};
 
-function addCustomFeed() {
+window.addCustomFeed = async function() {
   const input = document.getElementById('customRssUrl');
   if (!input) return;
   const url = input.value.trim();
   if (!url) return;
-  
+
   const isPro = currentUser && currentUser.plan !== 'free';
-  if (!isPro && userFeeds.length >= 5) {
-    toast('Free plan limited to 5 feeds. Please upgrade.', 'error');
+  const rssCount = userFeeds.filter(f => f.source_type !== 'reddit').length;
+  if (!isPro && rssCount >= 5) {
+    toast('Free plan: max 5 RSS feeds. Upgrade to Pro.', 'error');
     return;
   }
-  
+
+  let title;
+  try { title = new URL(url).hostname.replace('www.', ''); } catch(e) {
+    toast('Invalid URL', 'error');
+    return;
+  }
+
+  if (userFeeds.some(f => f.url === url)) {
+    toast('Feed already added', 'warning');
+    return;
+  }
+
   try {
-    const title = new URL(url).hostname.replace('www.', '');
-    if(!userFeeds.some(f => f.url === url)) {
-      userFeeds.push({ title, url });
+    const r = await apiFetch('/news/feed/sources', {
+      method: 'POST',
+      body: JSON.stringify({ title, url, source_type: 'rss' })
+    });
+    if (r.ok) {
+      const newSource = await r.json();
+      userFeeds.push(newSource);
       toast(`Added custom feed ${title}`, 'success');
       renderActiveFeeds();
+      updateTierBadge();
+    } else {
+      const err = await r.json().catch(() => ({}));
+      toast(err.detail || 'Failed to add feed', 'error');
     }
   } catch(e) {
-    toast('Invalid URL', 'error');
+    toast('Network error', 'error');
   }
+
   input.value = '';
   closeExploreFeedsModal();
+};
+
+// ── Active Feeds Grid ─────────────────────────────────────────────
+
+function renderActiveFeeds() {
+  const grid = document.getElementById('activeFeedsGrid');
+  const countEl = document.getElementById('activeFeedCount');
+  if (!grid) return;
+
+  if (countEl) countEl.textContent = `(${userFeeds.length})`;
+
+  if (!userFeeds.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1; padding:20px;">No feeds added yet. Click "Add Feed" to start.</div>';
+    return;
+  }
+
+  grid.innerHTML = userFeeds.map(f => {
+    const logo = f.logo_url || '';
+    const badgeClass = f.source_type === 'reddit' ? 'reddit' : 'rss';
+    const badgeLabel = f.source_type === 'reddit' ? 'Reddit' : 'RSS';
+    const name = f.title || f.subreddit_name || 'Feed';
+    return `
+      <div class="feed-card added">
+        <div class="feed-card-head">
+          ${logo ? `<img class="feed-card-logo" src="${esc(logo)}" alt="" onerror="this.style.display='none'">` : ''}
+          <span class="feed-card-name">${esc(name)}</span>
+        </div>
+        <div class="feed-card-footer">
+          <div style="display:flex; gap:6px; align-items:center;">
+            <span class="source-badge ${badgeClass}">${badgeLabel}</span>
+            ${f.category ? `<span class="category-pill">${esc(f.category)}</span>` : ''}
+          </div>
+          <button class="btn-ghost" style="margin:0; padding:4px 10px; font-size:11px; width:auto; color:var(--danger);" 
+                  onclick="removeFeed(${f.id})">Remove</button>
+        </div>
+      </div>`;
+  }).join('');
 }
+
+function updateTierBadge() {
+  const badge = document.getElementById('feedTierBadge');
+  if (!badge) return;
+  const isPro = currentUser && currentUser.plan !== 'free';
+  const rssCount = userFeeds.filter(f => f.source_type !== 'reddit').length;
+  const redditCount = userFeeds.filter(f => f.source_type === 'reddit').length;
+
+  if (isPro) {
+    badge.textContent = `PRO: ${rssCount} RSS / ${redditCount} Reddit`;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.textContent = `FREE: ${rssCount}/5 RSS - ${redditCount}/2 Reddit`;
+    badge.style.display = 'inline-block';
+  }
+}
+
+// ── Live Preview Panel ────────────────────────────────────────────
+
+async function previewFeed(url) {
+  const panel = document.getElementById('explorePreviewPanel');
+  const content = document.getElementById('explorePreviewContent');
+  if (!panel || !content) return;
+  panel.style.display = 'flex';
+  content.innerHTML = '<div class="skeleton" style="height:50px; margin:4px 0;"></div>'.repeat(3);
+
+  try {
+    const r = await apiFetch('/news/feed/preview?url=' + encodeURIComponent(url));
+    if (r.ok) {
+      const data = await r.json();
+      const articles = data.articles || data || [];
+      if (Array.isArray(articles) && articles.length) {
+        content.innerHTML = articles.slice(0, 8).map(a => `
+          <div class="feed-item">
+            <div class="feed-dot" style="background:var(--cyan);"></div>
+            <div class="feed-body">
+              <div class="feed-text">${esc(a.title || 'Untitled')}</div>
+              <div class="feed-meta">${a.published ? new Date(a.published).toLocaleDateString() : ''}</div>
+            </div>
+          </div>`).join('');
+      } else {
+        content.innerHTML = '<div class="empty-state">No articles found in this feed.</div>';
+      }
+    } else {
+      content.innerHTML = '<div class="empty-state">Could not load preview.</div>';
+    }
+  } catch(e) {
+    content.innerHTML = '<div class="empty-state">Preview failed.</div>';
+  }
+}
+
+async function previewSubreddit(name) {
+  const panel = document.getElementById('explorePreviewPanel');
+  const content = document.getElementById('explorePreviewContent');
+  if (!panel || !content) return;
+  panel.style.display = 'flex';
+  content.innerHTML = '<div class="skeleton" style="height:50px; margin:4px 0;"></div>'.repeat(3);
+
+  try {
+    const r = await apiFetch('/news/subreddit/preview?name=' + encodeURIComponent(name));
+    if (r.ok) {
+      const data = await r.json();
+      const posts = data.posts || data || [];
+      if (Array.isArray(posts) && posts.length) {
+        content.innerHTML = posts.slice(0, 8).map(p => `
+          <div class="feed-item">
+            <div class="feed-dot" style="background:#ff6b35;"></div>
+            <div class="feed-body">
+              <div class="feed-text">${esc(p.title || 'Untitled')}</div>
+              <div class="feed-meta">${p.score !== undefined ? p.score + ' pts' : ''} ${p.num_comments !== undefined ? '/ ' + p.num_comments + ' comments' : ''}</div>
+            </div>
+          </div>`).join('');
+      } else {
+        content.innerHTML = '<div class="empty-state">No posts found.</div>';
+      }
+    } else {
+      content.innerHTML = '<div class="empty-state">Could not load preview.</div>';
+    }
+  } catch(e) {
+    content.innerHTML = '<div class="empty-state">Preview failed.</div>';
+  }
+}
+
+function closePreviewPanel() {
+  const panel = document.getElementById('explorePreviewPanel');
+  if (panel) panel.style.display = 'none';
+}
+
+// ── Latest Articles (News Feed page) ──────────────────────────────
+
+async function loadNewsFeed() {
+  const list = document.getElementById('newsFeedList');
+  if (!list) return;
+
+  try {
+    const r = await apiFetch('/news/feed?limit=20');
+    if (r.ok) {
+      const data = await r.json();
+      const articles = data.articles || data || [];
+      if (Array.isArray(articles) && articles.length) {
+        list.innerHTML = articles.map(a => `
+          <div class="article-card">
+            <div class="feed-dot" style="background:var(--accent); margin-top:4px;"></div>
+            <div class="article-card-body">
+              <div class="article-card-title">
+                ${a.link ? `<a href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.title || 'Untitled')}</a>` : esc(a.title || 'Untitled')}
+              </div>
+              <div class="article-card-snippet">${esc(a.snippet || a.summary || '')}</div>
+              <div class="article-card-meta">
+                ${a.source_name ? esc(a.source_name) : ''} 
+                ${a.published_at ? ' / ' + new Date(a.published_at).toLocaleDateString() : ''}
+                ${a.relevance_score ? ' / score ' + a.relevance_score.toFixed(1) : ''}
+              </div>
+            </div>
+            <button class="btn-ghost" style="margin:0; padding:4px 8px; font-size:10px; width:auto; white-space:nowrap;" 
+                    onclick="createPostFromArticle(${JSON.stringify(a.title || '').replace(/"/g, '&quot;')}, ${JSON.stringify(a.link || '').replace(/"/g, '&quot;')})">
+              Create Post
+            </button>
+          </div>`).join('');
+      } else {
+        list.innerHTML = '<div class="empty-state" style="padding:30px;">No articles yet. Add feeds and run the pipeline to see content here.</div>';
+      }
+    } else {
+      list.innerHTML = '<div class="empty-state" style="padding:30px;">Could not load articles.</div>';
+    }
+  } catch(e) {
+    list.innerHTML = '<div class="empty-state" style="padding:30px;">Failed to load feed.</div>';
+  }
+}
+
+function createPostFromArticle(title, link) {
+  // Open the Studio (Compose) page and prefill with article context
+  goto('studio');
+  setTimeout(() => {
+    const ta = document.getElementById('composeBody');
+    if (ta) ta.value = `Here is an interesting article: "${title}"\n\nRead more: ${link}\n\n`;
+    toast('Article loaded into composer', 'success');
+  }, 300);
+}
+
+// ── Boot: load user feeds ─────────────────────────────────────────
 
 function startWorkflow() {
   const btn = document.getElementById('runPipelineBtn');
@@ -1501,11 +1780,10 @@ function startWorkflow() {
   btn.disabled = true;
   tracker.style.display = 'block';
   log.innerHTML = `<div class="feed-item" style="font-size:13px; color:var(--text-2);">
-    <span style="color:var(--accent); margin-right:8px;">⚡</span> Connecting to LangGraph engine...
+    <span style="color:var(--accent); margin-right:8px;">&#9889;</span> Connecting to LangGraph engine...
   </div>`;
   
   const token = localStorage.getItem('kontent_token');
-  // Pass token in URL for SSE auth since EventSource doesn't support headers natively easily
   const es = new EventSource(`/api/v1/workflow/run?token=${token || ''}`);
   
   es.onmessage = function(event) {
@@ -1520,14 +1798,12 @@ function startWorkflow() {
       el.className = 'feed-item';
       el.style.fontSize = '13px';
       el.style.color = 'var(--text-2)';
-      el.innerHTML = `<span style="color:var(--success); margin-right:8px;">✓</span> Workflow complete. Assets ready for review!`;
+      el.innerHTML = `<span style="color:var(--success); margin-right:8px;">&#10003;</span> Workflow complete. Assets ready for review!`;
       log.appendChild(el);
       log.scrollTop = log.scrollHeight;
       
-      // Store in memory for HITL screen if needed later
       window.latestWorkflowResult = data;
       
-      // Auto open HITL modal
       setTimeout(() => {
          closeAutomateModal();
          openHitlModal(window.latestWorkflowResult);
@@ -1536,12 +1812,11 @@ function startWorkflow() {
       return;
     }
     
-    // Log the new status or step
     const el = document.createElement('div');
     el.className = 'feed-item';
     el.style.fontSize = '13px';
     el.style.color = 'var(--text-2)';
-    el.innerHTML = `<span style="color:var(--accent); margin-right:8px;">✓</span> ${data.status || 'Processing...'}`;
+    el.innerHTML = `<span style="color:var(--accent); margin-right:8px;">&#10003;</span> ${data.status || 'Processing...'}`;
     log.appendChild(el);
     log.scrollTop = log.scrollHeight;
   };
@@ -1554,88 +1829,18 @@ function startWorkflow() {
   };
 }
 
-
-// On Boot, also load feeds
 async function loadUserFeeds() {
   try {
     const r = await apiFetch('/news/feed/sources');
     if (r.ok) {
       userFeeds = await r.json();
       renderActiveFeeds();
-      renderExploreFeeds();
+      updateTierBadge();
+      loadNewsFeed();
     }
   } catch(e) {}
 }
 loadUserFeeds();
-
-// Override the previously defined functions to use the new endpoints:
-window.toggleFeed = async function(title, url) {
-  const idx = userFeeds.findIndex(f => f.url === url);
-  if (idx > -1) {
-    // Remove
-    await apiFetch('/news/feed/sources?url=' + encodeURIComponent(url), { method: 'DELETE' });
-    userFeeds.splice(idx, 1);
-    toast(`Removed ${title} from your feeds`);
-  } else {
-    // Add
-    const isPro = currentUser && currentUser.plan !== 'free';
-    if (!isPro && userFeeds.length >= 5) {
-      toast('Free plan limited to 5 feeds. Please upgrade.', 'error');
-      return;
-    }
-    const r = await apiFetch('/news/feed/sources', {
-      method: 'POST',
-      body: JSON.stringify({ title, url })
-    });
-    if (r.ok) {
-      userFeeds.push({ title, url });
-      toast(`Added ${title} to your feeds`, 'success');
-    } else {
-      toast('Failed to add feed', 'error');
-    }
-  }
-  renderExploreFeeds();
-  renderActiveFeeds();
-};
-
-window.removeFeed = async function(url) {
-  await apiFetch('/news/feed/sources?url=' + encodeURIComponent(url), { method: 'DELETE' });
-  userFeeds = userFeeds.filter(f => f.url !== url);
-  renderActiveFeeds();
-  renderExploreFeeds();
-  toast('Feed removed');
-};
-
-window.addCustomFeed = async function() {
-  const input = document.getElementById('customRssUrl');
-  if (!input) return;
-  const url = input.value.trim();
-  if (!url) return;
-  
-  const isPro = currentUser && currentUser.plan !== 'free';
-  if (!isPro && userFeeds.length >= 5) {
-    toast('Free plan limited to 5 feeds. Please upgrade.', 'error');
-    return;
-  }
-  
-  const title = new URL(url).hostname.replace('www.', '');
-  const r = await apiFetch('/news/feed/sources', {
-    method: 'POST',
-    body: JSON.stringify({ title, url })
-  });
-  
-  if (r.ok) {
-    userFeeds.push({ title, url });
-    toast(`Added custom feed ${title}`, 'success');
-    renderActiveFeeds();
-  } else {
-    const err = await r.json();
-    toast(err.detail || 'Failed to add feed', 'error');
-  }
-  
-  input.value = '';
-  closeExploreFeedsModal();
-};
 
 // ── HITL Modal ────────────────────────────────────────────────────
 window.openHitlModal = function(data) {
