@@ -1515,6 +1515,13 @@ function startWorkflow() {
       
       // Store in memory for HITL screen if needed later
       window.latestWorkflowResult = data;
+      
+      // Auto open HITL modal
+      setTimeout(() => {
+         closeAutomateModal();
+         openHitlModal(window.latestWorkflowResult);
+      }, 1500);
+      
       return;
     }
     
@@ -1618,4 +1625,71 @@ window.addCustomFeed = async function() {
   input.value = '';
   closeExploreFeedsModal();
 };
+
+// ── HITL Modal ────────────────────────────────────────────────────
+window.openHitlModal = function(data) {
+  const modal = document.getElementById('hitlModalOverlay');
+  if (modal) {
+      modal.classList.add('open');
+      
+      // Inject drafted content. Defaulting to Twitter text
+      const captionText = document.getElementById('hitlCaptionInput');
+      if (captionText && data.scripts) {
+          captionText.value = data.scripts.twitter || data.scripts.linkedin || '';
+      }
+      
+      // Inject video
+      const vidContainer = document.getElementById('hitlVideoContainer');
+      if (vidContainer && data.video_asset) {
+          vidContainer.innerHTML = `<video src="${data.video_asset}" autoplay loop muted controls style="width:100%; height:100%; object-fit:cover;"></video>`;
+      }
+  }
+};
+
+window.closeHitlModal = function() {
+  const modal = document.getElementById('hitlModalOverlay');
+  if (modal) modal.classList.remove('open');
+};
+
+window.approveAndPublish = function() {
+   // Validate platforms
+   const platforms = [];
+   if(document.getElementById('hitlToggleTwitter').checked) platforms.push('twitter');
+   if(document.getElementById('hitlToggleLinkedin').checked) platforms.push('linkedin');
+   if(document.getElementById('hitlToggleYoutube').checked) platforms.push('youtube');
+   if(document.getElementById('hitlToggleTiktok').checked) platforms.push('tiktok');
+   
+   if (platforms.length === 0) {
+       toast('Please select at least one platform to publish', 'warning');
+       return;
+   }
+   
+   toast(`Publishing approved content to ${platforms.join(', ')}...`, 'success');
+   setTimeout(() => closeHitlModal(), 1000);
+};
+
+window.saveAssetsToLibrary = async function() {
+    const data = window.latestWorkflowResult;
+    if (!data) return;
+    
+    toast('Saving to Asset Library...', 'info');
+    
+    // Call the backend to save the asset
+    const r = await apiFetch('/media/assets', {
+        method: 'POST',
+        body: JSON.stringify({
+            asset_type: 'video',
+            content_url: data.video_asset,
+            text_content: document.getElementById('hitlCaptionInput').value,
+            title: data.selected_article?.title || 'Auto-generated Asset'
+        })
+    });
+    
+    if (r.ok) {
+        toast('Generated assets saved to library!', 'success');
+    } else {
+        toast('Failed to save to library', 'error');
+    }
+};
+
 

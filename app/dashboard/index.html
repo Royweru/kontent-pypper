@@ -490,6 +490,80 @@
           <div class="feed" id="workflowTrackerLog"></div>
         </div>
       </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── HITL Approval Modal ────────────────────────────────────── -->
+  <div class="studio-modal-overlay" id="hitlModalOverlay">
+    <div class="studio-modal" style="max-width: 900px; height: 85vh;">
+      <div class="studio-modal-header">
+        <div class="studio-modal-title">
+          <span style="color: var(--success);">✓</span>
+          <span>Review & Publish</span>
+        </div>
+        <button class="studio-modal-close" onclick="closeHitlModal()">×</button>
+      </div>
+      <div class="studio-modal-body" style="display:flex; flex-direction:row; padding: 0;">
+        
+        <!-- Left side: The generated assets -->
+        <div style="flex: 1; padding: 24px; overflow-y: auto; border-right: 1px solid var(--border);">
+          <div style="margin-bottom:20px;">
+            <div style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px;">Generated Video</div>
+            <div id="hitlVideoContainer" style="width:100%; aspect-ratio:9/16; max-height:400px; background:var(--base); border:1px solid var(--border); border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; overflow:hidden;">
+               <!-- video element injected by js -->
+            </div>
+            <button class="btn-ghost" style="font-size:12px; padding:8px; margin-top:8px;" onclick="toast('Regenerating video (Credits feature coming soon)', 'info')">
+              <span style="margin-right:4px;">🔄</span> Regenerate Video
+            </button>
+          </div>
+
+          <div>
+             <div style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px;">Drafted Text</div>
+             <textarea id="hitlCaptionInput" style="width:100%; height:150px; background:var(--base); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); padding:12px; font-family:var(--font-sans); font-size:13px; resize:vertical; outline:none;"></textarea>
+             <button class="btn-ghost" style="font-size:12px; padding:8px; margin-top:8px;" onclick="toast('Refining text via Agent...', 'info')">
+              <span style="margin-right:4px;">✨</span> AI Rewrite
+            </button>
+          </div>
+        </div>
+
+        <!-- Right side: Publishing Controls -->
+        <div style="width: 320px; padding: 24px; display:flex; flex-direction:column; background:rgba(0,0,0,0.1);">
+           <div style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted); text-transform:uppercase; margin-bottom:16px;">Platform Distribution</div>
+           
+           <div style="display:flex; flex-direction:column; gap:12px; margin-bottom: 32px;">
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <span style="font-size:13px;"><span style="color:var(--text-muted); margin-right:8px;">𝕏</span> Twitter</span>
+                <label class="switch"><input type="checkbox" id="hitlToggleTwitter" checked><span class="slider"></span></label>
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <span style="font-size:13px;"><span style="color:var(--text-muted); margin-right:8px;">💼</span> LinkedIn</span>
+                <label class="switch"><input type="checkbox" id="hitlToggleLinkedin" checked><span class="slider"></span></label>
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <span style="font-size:13px;"><span style="color:var(--danger); margin-right:8px;">▶</span> YouTube</span>
+                <label class="switch"><input type="checkbox" id="hitlToggleYoutube"><span class="slider"></span></label>
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <span style="font-size:13px;"><span style="color:var(--accent); margin-right:8px;">♪</span> TikTok</span>
+                <label class="switch"><input type="checkbox" id="hitlToggleTiktok"><span class="slider"></span></label>
+              </div>
+           </div>
+
+           <div style="margin-top:auto; display:flex; flex-direction:column; gap:12px;">
+             <button class="btn-secondary" style="width:100%; justify-content:center;" onclick="saveAssetsToLibrary()">
+               💾 Save to Library
+             </button>
+             <button class="btn-secondary" style="width:100%; justify-content:center;" onclick="toast('Schedule feature in progress', 'info')">
+               🗓 Schedule
+             </button>
+             <button class="btn-primary" style="margin-top:0;" onclick="approveAndPublish()">
+               ✅ Approve & Publish
+             </button>
+           </div>
+        </div>
+
+      </div>
     </div>
   </div>
 

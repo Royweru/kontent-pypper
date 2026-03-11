@@ -177,3 +177,35 @@ class StoryContent(Base):
     created_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
 
     user = relationship("User", back_populates="story_contents")
+
+class AssetLibrary(Base):
+    __tablename__ = "asset_library"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    
+    asset_type = Column(String, nullable=False) # 'video', 'image', 'text'
+    title = Column(String, nullable=True)
+    content_url = Column(String, nullable=True) # S3 or local path for videos/images
+    text_content = Column(Text, nullable=True) # For text assets like drafts
+    
+    file_size_bytes = Column(Integer, nullable=True)
+    duration_seconds = Column(Integer, nullable=True) # For videos
+    
+    is_favorite = Column(Boolean, server_default=text("FALSE"))
+    
+    platforms_used = Column(JSON, nullable=True) # E.g., ['twitter', 'linkedin']
+    
+    created_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(
+        DateTime,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=datetime.utcnow,
+    )
+
+    user = relationship("User", backref="assets")

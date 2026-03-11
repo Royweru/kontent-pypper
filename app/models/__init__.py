@@ -13,6 +13,7 @@ from app.models.content import (  # noqa: F401
     TemplateFolder,
     ContentSource,
     StoryContent,
+    AssetLibrary,
 )
 from app.models.campaign import VideoCampaign, VideoJob  # noqa: F401
 from app.models.analytics import (  # noqa: F401
