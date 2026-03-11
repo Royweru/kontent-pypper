@@ -117,9 +117,12 @@ class ContentSource(Base):
     )
 
     source_type = Column(String, nullable=False)  # reddit | rss | manual
+    source_name = Column(String, nullable=True)   # Human-readable label e.g. "TechCrunch"
     source_url = Column(String, nullable=True)
     subreddit_name = Column(String, nullable=True)
     rss_feed_url = Column(String, nullable=True)
+    logo_url = Column(String, nullable=True)      # CDN logo/favicon URL for UI cards
+    category = Column(String, nullable=True)      # niche: tech|business|news|entertainment|real_estate|science|art_media
 
     keywords_filter = Column(JSON, nullable=True)
     exclude_keywords = Column(JSON, nullable=True)
