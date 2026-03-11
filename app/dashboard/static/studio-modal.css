@@ -317,7 +317,8 @@
 .ai-drawer {
   position: fixed;
   top: 0; right: 0; bottom: 0;
-  width: 360px;
+  width: 100%;
+  max-width: 440px;
   background: var(--surface);
   border-left: 1px solid var(--border-hi);
   transform: translateX(100%);
@@ -361,11 +362,29 @@
 }
 
 .chat-bubble {
-  max-width: 85%;
-  padding: 12px 14px;
+  max-width: 90%;
+  padding: 16px 20px;
   border-radius: 12px;
   font-size: 13px;
   line-height: 1.5;
+  box-sizing: border-box;
+  word-wrap: break-word;
+}
+
+.chat-bubble p {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+.chat-bubble p:last-child {
+  margin-bottom: 0;
+}
+.chat-bubble ul, .chat-bubble ol {
+  padding-left: 24px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+.chat-bubble li {
+  margin-bottom: 6px;
 }
 
 .chat-bubble.user {

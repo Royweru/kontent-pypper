@@ -430,6 +430,17 @@ function toggleAiDrawer() {
   }
 }
 
+// Close AI drawer when clicking outside
+document.addEventListener('mousedown', (e) => {
+  const drawer = document.getElementById('aiDrawer');
+  if (drawer && drawer.classList.contains('open')) {
+    // Ensure we aren't clicking inside the drawer or on its toggles
+    if (!drawer.contains(e.target) && !e.target.closest('.magic-wand-fab') && !e.target.closest('.ai-drawer-toggle')) {
+      drawer.classList.remove('open');
+    }
+  }
+});
+
 function sendNewsToStudio(title, url) {
   const content = `Trending topic: ${title}\n\nSource link: ${url}\n\nPlease adapt this into a compelling post.`;
   navigate('studio'); // go to the launchpad background page
