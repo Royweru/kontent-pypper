@@ -159,15 +159,26 @@ async function loadOverview() {
   loadRecentPosts();
 }
 
-// Deterministic bar chart with X-axis labels
+// Deterministic bar chart with X-axis, Y-axis, and Grid
 function renderBarChart() {
   const wrap = document.getElementById('chartBars');
   if (!wrap) return;
   // Simulated engagement values (replaced with real data in Phase 8)
   const vals = [38, 62, 44, 79, 55, 91, 48, 73, 87, 61, 95, 68];
   
+  const maxVal = 100;
+  const steps = 4;
+  
+  let yLabelsHtml = '';
+  let gridLinesHtml = '';
+  for(let i=0; i<=steps; i++) {
+    const val = maxVal - (maxVal/steps)*i;
+    yLabelsHtml += `<div class="chart-y-label">${val}</div>`;
+    gridLinesHtml += `<div class="chart-grid-line"></div>`;
+  }
+
   let barsHtml = vals.map((h, i) => 
-    `<div class="chart-bar" style="height:${h}%; animation-delay:${i * 0.04}s;" title="${h * 12} Engagements"></div>`
+    `<div class="chart-bar" style="height:${h}%; animation-delay:${i * 0.04}s;" data-tooltip="${h * 12} Engagements"></div>`
   ).join('');
   
   let labelsHtml = vals.map((_, i) => 
@@ -175,11 +186,19 @@ function renderBarChart() {
   ).join('');
   
   wrap.innerHTML = `
-    <div style="display:flex; width:100%; align-items:flex-end; justify-content:space-between; height:110px; padding-bottom:8px;">
-      ${barsHtml}
-    </div>
-    <div style="display:flex; width:100%; justify-content:space-between; border-top:1px solid var(--border-hi); padding-top:8px;">
-      ${labelsHtml}
+    <div class="chart-container">
+      <div class="chart-grid">${gridLinesHtml}</div>
+      <div class="chart-y-axis">
+        ${yLabelsHtml}
+      </div>
+      <div style="flex:1; display:flex; flex-direction:column;">
+        <div class="chart-wrap">
+          ${barsHtml}
+        </div>
+        <div style="display:flex; width:100%; justify-content:space-between; border-top:1px solid var(--border-hi); padding-top:8px; margin-top:4px;">
+          ${labelsHtml}
+        </div>
+      </div>
     </div>
   `;
 }

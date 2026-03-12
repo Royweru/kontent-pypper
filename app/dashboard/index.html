@@ -113,22 +113,22 @@
     <!-- Stats -->
     <div class="stats-row">
       <div class="stat-card">
-        <div class="stat-label">Total Posts</div>
+        <div class="stat-label" style="display:flex; align-items:center; gap:6px;"><i data-lucide="file-text" style="width:16px; height:16px;"></i> Total Posts</div>
         <div class="stat-value mono" id="stat-posts">—</div>
         <div class="stat-delta" id="stat-plan">ON TRIAL</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Connected Platforms</div>
+        <div class="stat-label" style="display:flex; align-items:center; gap:6px;"><i data-lucide="share-2" style="width:16px; height:16px;"></i> Connected Platforms</div>
         <div class="stat-value mono" id="stat-platforms">—</div>
         <div class="stat-delta">Active integrations</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Posts Remaining</div>
+        <div class="stat-label" style="display:flex; align-items:center; gap:6px;"><i data-lucide="clock" style="width:16px; height:16px;"></i> Posts Remaining</div>
         <div class="stat-value mono" id="stat-remaining">—</div>
         <div class="stat-delta">this billing period</div>
       </div>
       <div class="stat-card" data-status="on">
-        <div class="stat-label">Agent Status</div>
+        <div class="stat-label" style="display:flex; align-items:center; gap:6px;"><i data-lucide="activity" style="width:16px; height:16px;"></i> Agent Status</div>
         <div class="stat-value mono accent-text">ON</div>
         <div class="stat-delta up">All systems normal</div>
       </div>
@@ -140,7 +140,7 @@
         <div class="section-header">
           <span class="section-title">Engagement — 12 weeks</span>
         </div>
-        <div class="chart-wrap" id="chartBars"></div>
+        <div id="chartBars"></div>
       </div>
       <div class="surface-card">
         <div class="section-header">
@@ -622,6 +622,12 @@
 </button>
 <div class="fab-tooltip">AI Co-pilot</div>
 
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    lucide.createIcons();
+  });
+</script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="/dashboard/static/dashboard.js"></script>
 </body>

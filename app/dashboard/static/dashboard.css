@@ -287,14 +287,13 @@ body {
   position: relative;
   overflow: hidden;
   padding: 22px 22px;
-  transition: border-color 0.2s, transform 0.2s;
-  position: relative;
-  overflow: hidden;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
 .stat-card:hover {
-  border-color: var(--border-hi);
+  border-color: var(--accent-glow-hi);
   transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(200,249,81,0.05);
 }
 
 .stat-card::before {
@@ -353,6 +352,13 @@ body {
   position: relative;
   overflow: hidden;
   padding: 20px;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+.surface-card:hover {
+  border-color: var(--accent-glow-hi);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(200,249,81,0.05);
 }
 
 /* ── Activity feed ───────────────────────────────────────── */
@@ -396,25 +402,92 @@ body {
 .badge-fail { background: rgba(248,113,113,0.1); color: var(--danger);  }
 
 /* ── Bar chart ───────────────────────────────────────────── */
+.chart-container {
+  display: flex;
+  position: relative;
+  height: 180px; 
+  margin-top: 16px;
+  padding-bottom: 8px;
+}
+
+.chart-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-right: 12px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-dim);
+  border-right: 1px solid var(--border-med);
+  padding-bottom: 24px;
+}
+
+.chart-y-label {
+  line-height: 1;
+  transform: translateY(50%);
+}
+
+.chart-grid {
+  position: absolute;
+  top: 0; left: 40px; right: 0; bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.chart-grid-line {
+  height: 1px;
+  background: var(--border-med);
+  opacity: 0.5;
+  width: 100%;
+}
+
 .chart-wrap {
-  height: 140px;
-  padding: 0 4px;
+  flex: 1;
+  height: 100%;
   display: flex;
   align-items: flex-end;
+  justify-content: space-between;
   gap: 6px;
-  padding-top: 8px;
+  padding: 0 4px;
+  position: relative;
+  z-index: 1;
 }
 
 .chart-bar {
   flex: 1;
-  border-radius: 3px 3px 0 0;
-  background: linear-gradient(180deg, var(--accent) 0%, rgba(200,249,81,0.06) 100%);
-  transition: opacity 0.2s;
-  position: relative; cursor: pointer;
-  --bar-value: "";
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, var(--accent) 0%, rgba(180,242,82,0.1) 100%);
+  transition: all 0.2s ease;
+  position: relative; 
+  cursor: pointer;
 }
 
-.chart-bar:hover { opacity: 0.8; }
+.chart-bar:hover { 
+  opacity: 1; 
+  filter: brightness(1.2);
+}
+
+.chart-bar:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface2);
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  border: 1px solid var(--border-hi);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  z-index: 10;
+}
 
 /* ── Platform grid ───────────────────────────────────────── */
 .platform-grid {
@@ -557,9 +630,9 @@ textarea:focus {
   transition: border-color 0.2s, color 0.2s, background 0.2s;
 }
 .btn-secondary:hover {
-  border-color: var(--lavender-border);
+  border-color: var(--text-muted);
   color: var(--text);
-  background: var(--lavender-dim);
+  background: transparent;
 }
 .btn-primary:active { transform: scale(0.98); }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
