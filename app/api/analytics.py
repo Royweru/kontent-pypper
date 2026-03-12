@@ -117,7 +117,7 @@ async def trigger_reflection(user: CurrentUser, db: DB):
         select(PostAnalytics)
         .join(Post, PostAnalytics.post_id == Post.id)
         .where(Post.user_id == user.id)
-        .order_by(desc(PostAnalytics.created_at))
+        .order_by(desc(PostAnalytics.fetched_at))
         .limit(50)
     )
     rows = (await db.execute(q)).scalars().all()
