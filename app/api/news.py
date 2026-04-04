@@ -11,6 +11,7 @@ from app.core.deps import get_current_user
 from app.models.content_source import ContentItem
 from app.models.user import User
 from app.models.content import ContentSource
+from sqlalchemy import or_
 
 router = APIRouter()
 
@@ -27,6 +28,10 @@ class AddFeedRequest(BaseModel):
     category: Optional[str] = None
     subreddit_name: Optional[str] = None
 
+class ContentItemUpdate(BaseModel):
+    is_used: bool
+
+
 
 # ---------------------------------------------------------------------------
 # Public feed endpoint (dashboard article list)
@@ -35,7 +40,8 @@ class AddFeedRequest(BaseModel):
 @router.get("/feed", response_model=List[Dict[str, Any]])
 async def get_news_feed(
     limit: int = Query(20, ge=1, le=50),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Returns the latest fetched news/content items for dashboard display.
@@ -43,6 +49,8 @@ async def get_news_feed(
     """
     stmt = (
         select(ContentItem)
+        .where(ContentItem.is_used == False)
+        .where(or_(ContentItem.user_id == current_user.id, ContentItem.user_id.is_(None)))
         .order_by(ContentItem.relevance_score.desc(), ContentItem.id.desc())
         .limit(limit)
     )
@@ -64,6 +72,28 @@ async def get_news_feed(
         })
 
     return feed
+
+
+@router.patch("/feed/items/{item_id}")
+async def update_content_item(
+    item_id: int,
+    req: ContentItemUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Marks a content item as used (or unused)."""
+    stmt = select(ContentItem).where(
+        ContentItem.id == item_id,
+        or_(ContentItem.user_id == current_user.id, ContentItem.user_id.is_(None))
+    )
+    item = (await db.execute(stmt)).scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    
+    item.is_used = req.is_used
+    await db.commit()
+    return {"status": "success", "is_used": item.is_used}
+
 
 
 # ---------------------------------------------------------------------------

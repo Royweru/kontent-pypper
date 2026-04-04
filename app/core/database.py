@@ -25,8 +25,6 @@ def _build_async_url() -> str:
 
     if base.startswith("postgresql://"):
         return base.replace("postgresql://", "postgresql+asyncpg://", 1)
-    if base.startswith("postgres://"):
-        return base.replace("postgres://", "postgresql+asyncpg://", 1)
     return base
 
 

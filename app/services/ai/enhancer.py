@@ -1,35 +1,11 @@
+# app/services/ai/enhancer.py
 """
 KontentPyper - AI Enhancer Service
 Takes raw ideas and formats them perfectly for selected target platforms.
 Uses LangChain structured output to guarantee schema-valid responses.
 """
-
-from typing import Dict, List, Optional
-from pydantic import BaseModel, Field
-
 from app.services.ai.llm_client import LLMClient
 from app.core.config import settings
-
-# ── Structured Output Schema ──────────────────────────────────────
-
-class PlatformDraft(BaseModel):
-    platform: str = Field(description="The name of the platform, e.g., 'twitter', 'linkedin'")
-    content: str = Field(description="The fully formatted, ready-to-publish content string for this platform")
-
-class EnhancedDraftResponse(BaseModel):
-    """The strict format the LLM must return when enhancing content."""
-    drafts: List[PlatformDraft] = Field(
-        description="A list of platform-specific drafts. Must contain exactly one item for each requested platform."
-    )
-    suggested_hashtags: List[str] = Field(
-        default=[],
-        description="A list of 3-5 high-impact suggested tags without the # symbol.",
-    )
-
-class EnhancedDraft(BaseModel):
-    """Internal model returned to the services."""
-    platforms: Dict[str, str]
-    suggested_hashtags: List[str]
 
 # ── Service ───────────────────────────────────────────────────────
 

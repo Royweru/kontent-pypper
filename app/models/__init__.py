@@ -22,3 +22,4 @@ from app.models.analytics import (  # noqa: F401
     TemplateAnalytics,
 )
 from app.models.content_source import ContentItem, ApprovalQueue  # noqa: F401
+from app.models.credit import CreditTransaction  # noqa: F401

@@ -1,3 +1,4 @@
+# app/services/ai/reflector.py
 """
 KontentPyper - AI Reflection Engine
 Analyzes past performance data to derive strategic insights for future content.
@@ -9,23 +10,6 @@ from pydantic import BaseModel, Field
 
 from app.services.ai.llm_client import LLMClient
 from app.core.config import settings
-
-
-# ── Structured Output Schema ──────────────────────────────────────
-
-class StrategicInsight(BaseModel):
-    """Structured insight derived from analytics."""
-    what_worked: List[str] = Field(
-        description="Bullet points of what specific elements succeeded in high-performing posts."
-    )
-    what_failed: List[str] = Field(
-        description="Bullet points of what specific elements failed in low-performing posts."
-    )
-    new_rules: List[str] = Field(
-        description="New copywriting rules the Enhancer should adopt going forward."
-    )
-
-
 # ── Service ───────────────────────────────────────────────────────
 
 class ReflectorService:

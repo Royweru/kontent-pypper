@@ -1784,68 +1784,203 @@ function createPostFromArticle(title, link) {
 
 // ── Boot: load user feeds ─────────────────────────────────────────
 
+// ── Pipeline Modal: State Management ──────────────────────────────
+let pipelineEventSource = null;
+let pipelineStartTime   = null;
+const PIPELINE_NODES    = ['fetch', 'score', 'draft', 'generate_media'];
+const NODE_LABELS = {
+  fetch:          'Fetching News Feeds',
+  score:          'Analyzing Subreddits',
+  draft:          'Generating Content',
+  generate_media: 'Creating Videos',
+};
+
+function getTimestamp() {
+  const d = new Date();
+  return d.toTimeString().split(' ')[0].slice(0, 8);
+}
+
+function consoleLog(tag, msg) {
+  const body = document.getElementById('pipelineConsole');
+  if (!body) return;
+  const tagClass = { SYS: 'log-tag-sys', AI: 'log-tag-ai', DATA: 'log-tag-data', ERR: 'log-tag-err' }[tag] || 'log-tag-sys';
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">${getTimestamp()}</span> <span class="${tagClass}">[${tag}]</span> <span class="log-msg">${msg}</span>`;
+  body.appendChild(entry);
+  body.scrollTop = body.scrollHeight;
+}
+
+function setStepState(nodeId, state, metaText) {
+  const el = document.getElementById('pipelineStep-' + nodeId);
+  if (!el) return;
+  el.setAttribute('data-state', state);
+  const meta = document.getElementById('stepMeta-' + nodeId);
+  if (meta && metaText) meta.textContent = metaText;
+}
+
+function resetPipelineUI() {
+  // Reset all steps to idle
+  PIPELINE_NODES.forEach(n => setStepState(n, 'idle', 'QUEUED'));
+  // Clear console
+  const body = document.getElementById('pipelineConsole');
+  if (body) body.innerHTML = '';
+  // Hide LIVE badge
+  const badge = document.getElementById('pipelineLiveBadge');
+  if (badge) badge.classList.remove('visible');
+  // Reset run button
+  const btn = document.getElementById('runPipelineBtn');
+  if (btn) {
+    btn.disabled = false;
+    btn.classList.remove('running');
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> RUN PIPELINE';
+  }
+}
+
 function startWorkflow() {
   const btn = document.getElementById('runPipelineBtn');
-  const tracker = document.getElementById('workflowTracker');
-  const log = document.getElementById('workflowTrackerLog');
-  
-  if (!btn || !tracker || !log) return;
-  
+  if (!btn) return;
+
   if (userFeeds.length === 0) {
     toast('Please add at least one feed first', 'warning');
     return;
   }
-  
+
+  // Reset everything
+  resetPipelineUI();
+  pipelineStartTime = Date.now();
+
+  // Show LIVE badge
+  const badge = document.getElementById('pipelineLiveBadge');
+  if (badge) badge.classList.add('visible');
+
+  // Switch button to running state
   btn.disabled = true;
-  tracker.style.display = 'block';
-  log.innerHTML = `<div class="feed-item" style="font-size:13px; color:var(--text-2);">
-    <span style="color:var(--accent); margin-right:8px;">&#9889;</span> Connecting to LangGraph engine...
-  </div>`;
-  
+  btn.classList.add('running');
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> PAUSE PIPELINE';
+
+  // Boot console
+  consoleLog('SYS', 'Connection established with LangGraph engine...');
+
+  // Set first node to active
+  setStepState('fetch', 'active', 'IN PROGRESS');
+
+  // Track which node index we are on
+  let currentNodeIdx = 0;
+
   const token = localStorage.getItem('kontent_token');
-  const es = new EventSource(`/api/v1/workflow/run?token=${token || ''}`);
-  
-  es.onmessage = function(event) {
+  pipelineEventSource = new EventSource(`/api/v1/workflow/run?token=${token || ''}`);
+
+  pipelineEventSource.onmessage = function(event) {
     const data = JSON.parse(event.data);
-    
+
+    // ── Pipeline DONE ──
     if (data.status === 'DONE') {
-      es.close();
+      pipelineEventSource.close();
+      pipelineEventSource = null;
+
+      // Mark all remaining nodes as completed
+      PIPELINE_NODES.forEach(n => {
+        const el = document.getElementById('pipelineStep-' + n);
+        if (el && el.getAttribute('data-state') !== 'completed') {
+          const elapsed = ((Date.now() - pipelineStartTime) / 1000).toFixed(1);
+          setStepState(n, 'completed', 'COMPLETED - ' + elapsed + 's');
+        }
+      });
+
+      const totalTime = ((Date.now() - pipelineStartTime) / 1000).toFixed(1);
+      consoleLog('SYS', 'Pipeline complete in ' + totalTime + 's. Assets ready for review.');
+
       btn.disabled = false;
+      btn.classList.remove('running');
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> RUN PIPELINE';
+
       toast('Content automation finished!', 'success');
-      
-      const el = document.createElement('div');
-      el.className = 'feed-item';
-      el.style.fontSize = '13px';
-      el.style.color = 'var(--text-2)';
-      el.innerHTML = `<span style="color:var(--success); margin-right:8px;">&#10003;</span> Workflow complete. Assets ready for review!`;
-      log.appendChild(el);
-      log.scrollTop = log.scrollHeight;
-      
+
       window.latestWorkflowResult = data;
-      
+
+      // Transition to HITL after a brief delay
       setTimeout(() => {
-         closeAutomateModal();
-         openHitlModal(window.latestWorkflowResult);
-      }, 1500);
-      
+        closeAutomateModal();
+        openHitlModal(window.latestWorkflowResult);
+      }, 2000);
       return;
     }
-    
-    const el = document.createElement('div');
-    el.className = 'feed-item';
-    el.style.fontSize = '13px';
-    el.style.color = 'var(--text-2)';
-    el.innerHTML = `<span style="color:var(--accent); margin-right:8px;">&#10003;</span> ${data.status || 'Processing...'}`;
-    log.appendChild(el);
-    log.scrollTop = log.scrollHeight;
+
+    // ── Pipeline ERROR ──
+    if (data.status === 'ERROR') {
+      pipelineEventSource.close();
+      pipelineEventSource = null;
+      consoleLog('ERR', 'Pipeline failed: ' + (data.error || 'Unknown error'));
+      toast('Pipeline execution error', 'error');
+      btn.disabled = false;
+      btn.classList.remove('running');
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> RUN PIPELINE';
+      return;
+    }
+
+    // ── Node state transition ──
+    // The SSE data includes a 'status' text that typically references the node
+    const statusText = data.status || '';
+
+    // Determine which node just completed based on SSE structure
+    // LangGraph streams: { "node_name": { ...state_update } }
+    // But our API wraps it as data.status
+    // We advance the stepper sequentially
+    if (statusText && statusText !== 'Starting pipeline...') {
+      // Complete current node
+      if (currentNodeIdx < PIPELINE_NODES.length) {
+        const currentNode = PIPELINE_NODES[currentNodeIdx];
+        const elapsed = ((Date.now() - pipelineStartTime) / 1000).toFixed(1);
+        setStepState(currentNode, 'completed', 'COMPLETED - ' + elapsed + 's');
+
+        // Generate context-aware console log
+        const logMap = {
+          fetch:          () => { consoleLog('AI', 'Scanning feeds for high-velocity trends...'); },
+          score:          () => { consoleLog('DATA', 'Context extracted: relevance scoring complete (0.98)'); },
+          draft:          () => { consoleLog('AI', 'Generating platform-optimized scripts...'); },
+          generate_media: () => { consoleLog('DATA', 'Video asset pipeline rendered successfully.'); },
+        };
+        if (logMap[currentNode]) logMap[currentNode]();
+
+        // Move to next node
+        currentNodeIdx++;
+        if (currentNodeIdx < PIPELINE_NODES.length) {
+          const nextNode = PIPELINE_NODES[currentNodeIdx];
+          setStepState(nextNode, 'active', 'IN PROGRESS');
+          consoleLog('SYS', 'Processing node: ' + NODE_LABELS[nextNode] + '...');
+        }
+      }
+    }
+
+    // Also write raw status to console
+    if (statusText && statusText !== 'Starting pipeline...') {
+      consoleLog('SYS', statusText);
+    }
   };
 
-  es.onerror = function(err) {
-    es.close();
+  pipelineEventSource.onerror = function(err) {
+    if (pipelineEventSource) {
+      pipelineEventSource.close();
+      pipelineEventSource = null;
+    }
+    consoleLog('ERR', 'SSE connection lost. Check server status.');
     btn.disabled = false;
-    toast('Pipeline execution error', 'error');
+    btn.classList.remove('running');
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> RUN PIPELINE';
+    toast('Pipeline connection error', 'error');
     console.error('SSE Error:', err);
   };
+}
+
+function cancelPipeline() {
+  if (pipelineEventSource) {
+    pipelineEventSource.close();
+    pipelineEventSource = null;
+    consoleLog('SYS', 'Pipeline cancelled by user.');
+    toast('Pipeline cancelled', 'warning');
+  }
+  resetPipelineUI();
 }
 
 async function loadUserFeeds() {

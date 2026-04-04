@@ -167,24 +167,69 @@
 
   <!-- ── Studio ────────────────────────────────────────────────── -->
   <section class="page" id="page-studio" aria-label="Studio">
-
-    <div class="section-header" style="margin-bottom:20px;">
-      <span class="glow-label">AI Studio</span>
-      <span class="muted" style="font-size:12px;">Write once — generate for everywhere</span>
+    <!-- Custom Studio Topbar explicitly mapped to the screenshot if we hide the global one -->
+    <div class="studio-topbar-wrapper">
+      <div class="studio-topbar-left">
+        <span class="studio-topbar-title">STUDIO</span>
+        <span class="studio-topbar-muted">DRAFT_MODE::TRUE</span>
+      </div>
+      <div class="studio-topbar-right">
+         <span class="status-pill"><span class="status-dot" aria-hidden="true"></span> AGENT ACTIVE</span>
+         <span class="studio-wireless-icon">((•))</span>
+      </div>
     </div>
-
-    <!-- Empty State / Launchpad -->
-    <div style="margin-top: 40px; text-align: center; max-width: 400px; margin-left: auto; margin-right: auto;">
-      <div style="font-size: 48px; margin-bottom: 24px;">✦</div>
-      <h2 style="font-size: 20px; font-weight: 500; color: var(--text); margin-bottom: 12px; letter-spacing: -0.01em;">Create a New Post</h2>
-      <p style="font-size: 14px; color: var(--text-muted); line-height: 1.6; margin-bottom: 32px;">
-        Use KontentPyper's AI to break down your ideas into highly-optimized, format-perfect posts for every platform you've connected.
-      </p>
-      <button class="btn-primary" onclick="openStudioModal()" style="font-size: 14px; padding: 14px 24px; display: inline-flex; align-items: center; gap: 8px; width: auto; background: var(--white); color: var(--deep); box-shadow: 0 0 30px rgba(255,255,255,0.15);">
-        <span style="font-size:18px; line-height:0;">+</span> Start Writing
-      </button>
+    
+    <div class="studio-splash-container">
+       <div class="studio-icon-box">
+          <div class="studio-icon-dot"></div>
+          <div class="studio-icon-tool">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </div>
+          <span class="studio-plus">+</span>
+       </div>
+       <div class="studio-box-text">AI STUDIO</div>
+       
+       <h1 class="studio-hero-title">Create a <span class="accent-text">New Post</span></h1>
+       <p class="studio-hero-desc">
+          Use KontentPyper's AI to break down your ideas into highly-optimized, format-perfect posts for every platform you've connected.
+       </p>
+       
+       <button class="btn-primary studio-btn" onclick="openStudioModal()">
+         <span class="btn-icon">+</span> Start Writing
+       </button>
+       
+       <div class="studio-features">
+         <div class="studio-feature-card">
+            <div class="feature-card-header"><span class="feature-dot"></span> OPTIMIZATION</div>
+            <div class="feature-card-body">AI-OPTIMIZED METADATA FOR EVERY NETWORK.</div>
+         </div>
+         <div class="studio-feature-card">
+            <div class="feature-card-header"><span class="feature-dot"></span> DISTRIBUTION</div>
+            <div class="feature-card-body">ONE-CLICK MULTI-PUBLISH ACROSS YOUR ECOSYSTEM.</div>
+         </div>
+         <div class="studio-feature-card">
+            <div class="feature-card-header"><span class="feature-dot"></span> AUTOMATION</div>
+            <div class="feature-card-body">SCHEDULE INSTANTLY OR PUBLISH TO LIVE QUEUES.</div>
+         </div>
+       </div>
     </div>
-
+    
+    <div class="studio-bottom-bar">
+      <div class="studio-system-pill">
+        <span class="system-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 22 3-3"/><path d="M22 8a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2Z"/><path d="M22 14H2M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M12 2v4"/><path d="M12 2A2 2 0 0 1 14 4h4a2 2 0 0 1 2 2H4a2 2 0 0 1 2-2h4a2 2 0 0 1 2-2Z"/></svg>
+        </span> 
+        SYSTEM READY
+      </div>
+      <span class="studio-system-text">Awaiting creative input...</span>
+    </div>
+    
+    <div class="studio-watermark">
+      SYNTHETIC ARCHITECT PROTOCOL::STUDIO::<br>
+      AWAITING_INPUT
+    </div>
   </section>
 
   <!-- ── Studio Full-Screen Modal ──────────────────────────────── -->
@@ -495,29 +540,114 @@
     </div>
   </div>
 
-  <!-- ── Automate Pipeline Live Modal (Placeholder for now) ───── -->
-  <div class="studio-modal-overlay" id="automateModalOverlay">
-    <div class="studio-modal" style="max-width: 800px; height: auto; min-height:400px; max-height:80vh;">
-      <div class="studio-modal-header">
-        <div class="studio-modal-title">
-          <span style="color: var(--accent);">⚡</span>
-          <span>10x Content Pipeline</span>
-        </div>
-        <button class="studio-modal-close" onclick="closeAutomateModal()">×</button>
+  <!-- ── Automation Pipeline Modal (Redesigned - Synthetic Architect) ── -->
+  <div class="pipeline-modal-overlay" id="automateModalOverlay">
+    <div class="pipeline-modal">
+
+      <!-- Modal Header -->
+      <div class="pipeline-modal-header">
+        <h2 class="pipeline-modal-title">Automation Pipeline Modal</h2>
+        <button class="pipeline-modal-close" onclick="closeAutomateModal()" aria-label="Close pipeline modal">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
-      <div class="studio-modal-body" style="flex-direction: column; padding: 24px;">
-        <p style="color:var(--text-muted); font-size:14px; margin-bottom:24px;">Select the feeds you want to scrape content from, then run the engine.</p>
-        <div id="automateFeedsSelection" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px;">
-          <!-- Fetched feeds as toggles -->
+
+      <!-- Badges Row -->
+      <div class="pipeline-badge-row">
+        <span class="pipeline-chip" id="pipelineVersionChip">LANGGRAPH v2.x</span>
+        <span class="pipeline-live-badge" id="pipelineLiveBadge">
+          <span class="pipeline-live-dot"></span> LIVE
+        </span>
+      </div>
+
+      <!-- Vertical Timeline Stepper -->
+      <div class="pipeline-stepper" id="pipelineStepper">
+
+        <div class="pipeline-step" id="pipelineStep-fetch" data-state="idle">
+          <div class="step-indicator">
+            <div class="step-icon">
+              <svg class="step-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <div class="step-spinner"></div>
+              <div class="step-dot"></div>
+            </div>
+            <div class="step-line"></div>
+          </div>
+          <div class="step-content">
+            <div class="step-label">Fetching News Feeds</div>
+            <div class="step-meta" id="stepMeta-fetch">QUEUED</div>
+          </div>
         </div>
-        <button class="btn-primary" id="runPipelineBtn" onclick="startWorkflow()" style="font-size: 16px; padding: 14px;">Run Workflow Pipeline</button>
-        
-        <div id="workflowTracker" style="display:none; margin-top: 32px;">
-          <h3 style="font-size:14px; margin-bottom:16px;">Live Status</h3>
-          <div class="feed" id="workflowTrackerLog"></div>
+
+        <div class="pipeline-step" id="pipelineStep-score" data-state="idle">
+          <div class="step-indicator">
+            <div class="step-icon">
+              <svg class="step-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <div class="step-spinner"></div>
+              <div class="step-dot"></div>
+            </div>
+            <div class="step-line"></div>
+          </div>
+          <div class="step-content">
+            <div class="step-label">Analyzing Subreddits</div>
+            <div class="step-meta" id="stepMeta-score">QUEUED</div>
+          </div>
+        </div>
+
+        <div class="pipeline-step" id="pipelineStep-draft" data-state="idle">
+          <div class="step-indicator">
+            <div class="step-icon">
+              <svg class="step-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <div class="step-spinner"></div>
+              <div class="step-dot"></div>
+            </div>
+            <div class="step-line"></div>
+          </div>
+          <div class="step-content">
+            <div class="step-label">Generating Content</div>
+            <div class="step-meta" id="stepMeta-draft">QUEUED</div>
+          </div>
+        </div>
+
+        <div class="pipeline-step last" id="pipelineStep-generate_media" data-state="idle">
+          <div class="step-indicator">
+            <div class="step-icon">
+              <svg class="step-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <div class="step-spinner"></div>
+              <div class="step-dot"></div>
+            </div>
+          </div>
+          <div class="step-content">
+            <div class="step-label">Creating Videos</div>
+            <div class="step-meta" id="stepMeta-generate_media">QUEUED</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Terminal Console Output -->
+      <div class="pipeline-console">
+        <div class="console-header">
+          <div class="console-dots">
+            <span class="cdot red"></span>
+            <span class="cdot yellow"></span>
+            <span class="cdot green"></span>
+          </div>
+          <span class="console-title">CONSOLE OUTPUT</span>
+        </div>
+        <div class="console-body" id="pipelineConsole">
+          <!-- Log entries injected by JS -->
         </div>
       </div>
+
+      <!-- Action Buttons -->
+      <div class="pipeline-actions">
+        <button class="pipeline-btn-cancel" id="pipelineCancelBtn" onclick="cancelPipeline()">CANCEL</button>
+        <button class="pipeline-btn-primary" id="runPipelineBtn" onclick="startWorkflow()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          RUN PIPELINE
+        </button>
       </div>
+
     </div>
   </div>
 

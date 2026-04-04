@@ -1,9 +1,9 @@
+# app/services/ai/llm_client.py
 """
 KontentPyper - LLM Client (LangChain Abstraction)
 Uses langchain_openai.ChatOpenAI for model-agnostic structured and text generation.
 Swap provider by changing the import and model string - zero other code changes needed.
 """
-
 import logging
 from typing import Type, TypeVar
 
@@ -22,16 +22,12 @@ class LLMClient:
     Provides two clean methods:
       - generate_structured() -> returns a validated Pydantic model
       - generate_text()       -> returns a plain string
-    
-    To swap to Gemini later, change the import to `from langchain_google_genai import ChatGoogleGenerativeAI`
-    and pass its model name. The rest of the codebase stays untouched.
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-5-nano"):
+    def __init__(self, model: str = "gpt-4o-mini"):
         self.model_name = model
         self.llm = ChatOpenAI(
             model=model,
-            api_key=api_key,
             max_retries=2,
         )
 

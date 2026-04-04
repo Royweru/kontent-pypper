@@ -33,7 +33,7 @@ async def generate_video_script(title: str, snippet: str, source: str) -> VideoS
     if not settings.OPENAI_API_KEY:
         raise ValueError("OPENAI_API_KEY is not configured")
 
-    client = LLMClient(api_key=settings.OPENAI_API_KEY, model="gpt-5-nano")
+    client = LLMClient(model="gpt-4o-mini")
 
     user_prompt = (
         f"Create a viral 60-second video script based on this trending tech news:\n\n"

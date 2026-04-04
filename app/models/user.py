@@ -1,5 +1,6 @@
 """
 KontentPyper - User & Subscription Models
+Includes credit/tier fields for the monetization system.
 """
 
 from datetime import datetime
@@ -58,8 +59,17 @@ class User(Base):
     telegram_bot_token = Column(String, nullable=True)
     telegram_chat_id = Column(String, nullable=True)
 
-    #Niche
+    # Niche
     niche = Column(String, nullable=True)
+
+    # ── Monetization: Credits & Tier ──────────────────────────────
+    tier_level = Column(String, server_default=text("'free'"))  # free | pro | max
+    video_credits_remaining = Column(Integer, server_default=text("0"))
+    video_credits_used_this_month = Column(Integer, server_default=text("0"))
+    credits_reset_date = Column(DateTime, nullable=True)
+    workflow_runs_today = Column(Integer, server_default=text("0"))
+    workflow_runs_reset_date = Column(DateTime, nullable=True)
+    active_niche = Column(String, nullable=True)  # Niche for autonomous workflow runs
 
     # ── Relationships ─────────────────────────────────────────────
     social_connections = relationship(
