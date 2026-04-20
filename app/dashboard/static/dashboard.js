@@ -40,7 +40,8 @@ const PAGE_TITLES = {
   connections: 'Connections',
   schedule:    'Schedule',
   campaigns:   'Campaigns',
-  news:        'News Feed',
+  rss:         'RSS Feeds',
+  subreddits:  'Subreddits',
   analytics:   'Analytics',
   posts:       'Post History',
   settings:    'Settings',
@@ -92,7 +93,8 @@ function navigate(pageId) {
   }
 
   if (pageId === 'posts')       loadPostHistory();
-  if (pageId === 'news')        loadNewsFeed();
+  if (pageId === 'rss')         loadRssFeed();
+  if (pageId === 'subreddits')  loadSubredditsFeed();
   if (pageId === 'connections') renderPlatforms();
   if (pageId === 'analytics')   loadAnalytics();
   if (pageId === 'settings')    loadTelegramSettings();
@@ -1393,9 +1395,13 @@ function renderCategoryChips(catalogue) {
   }).join('');
 }
 
-async function openExploreFeedsModal() {
+async function openExploreFeedsModal(sourceType) {
+  if (sourceType) activeSourceType = sourceType;
   const modal = document.getElementById('exploreFeedsModalOverlay');
   if (modal) modal.classList.add('open');
+  // Sync sub-tabs to match the requested source type
+  document.getElementById('subTabRss')?.classList.toggle('active', activeSourceType === 'rss');
+  document.getElementById('subTabReddit')?.classList.toggle('active', activeSourceType === 'reddit');
   const catalogue = await loadCatalogue();
   renderCategoryChips(catalogue);
   renderExploreFeeds();
@@ -1606,56 +1612,91 @@ window.addCustomFeed = async function() {
   closeExploreFeedsModal();
 };
 
-// ── Active Feeds Grid ─────────────────────────────────────────────
+// ── Active Feeds Carousels (RSS + Subreddits) ─────────────────────
 
 function renderActiveFeeds() {
-  const grid = document.getElementById('activeFeedsGrid');
-  const countEl = document.getElementById('activeFeedCount');
+  renderActiveRssChips();
+  renderActiveSubredditCards();
+}
+
+function renderActiveRssChips() {
+  const grid = document.getElementById('activeRssGrid');
   if (!grid) return;
+  const rssFeeds = userFeeds.filter(f => f.source_type !== 'reddit');
 
-  if (countEl) countEl.textContent = `(${userFeeds.length})`;
-
-  if (!userFeeds.length) {
-    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1; padding:20px;">No feeds added yet. Click "Add Feed" to start.</div>';
+  if (!rssFeeds.length) {
+    grid.innerHTML = '<div class="intel-empty-chip">No feeds yet -- click "+ Add Feed"</div>';
     return;
   }
 
-  grid.innerHTML = userFeeds.map(f => {
+  grid.innerHTML = rssFeeds.map(f => {
+    const name = f.title || 'Feed';
     const logo = f.logo_url || '';
-    const badgeClass = f.source_type === 'reddit' ? 'reddit' : 'rss';
-    const badgeLabel = f.source_type === 'reddit' ? 'Reddit' : 'RSS';
-    const name = f.title || f.subreddit_name || 'Feed';
     return `
-      <div class="feed-card added">
-        <div class="feed-card-head">
-          ${logo ? `<img class="feed-card-logo" src="${esc(logo)}" alt="" onerror="this.style.display='none'">` : ''}
-          <span class="feed-card-name">${esc(name)}</span>
+      <div class="rss-source-chip">
+        ${logo
+          ? `<img class="rss-chip-icon" src="${esc(logo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="rss-chip-icon-fallback" style="display:none;">R</div>`
+          : `<div class="rss-chip-icon-fallback">R</div>`
+        }
+        <div class="rss-chip-info">
+          <span class="rss-chip-name">${esc(name)}</span>
+          <span class="rss-chip-stat">RSS Feed</span>
         </div>
-        <div class="feed-card-footer">
-          <div style="display:flex; gap:6px; align-items:center;">
-            <span class="source-badge ${badgeClass}">${badgeLabel}</span>
-            ${f.category ? `<span class="category-pill">${esc(f.category)}</span>` : ''}
+        <button class="rss-chip-remove" onclick="removeFeed(${f.id})" title="Remove">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>`;
+  }).join('');
+}
+
+function renderActiveSubredditCards() {
+  const grid = document.getElementById('activeSubredditsGrid');
+  const countEl = document.getElementById('activeSubCount');
+  if (!grid) return;
+  const subFeeds = userFeeds.filter(f => f.source_type === 'reddit');
+
+  if (countEl) countEl.textContent = `(${String(subFeeds.length).padStart(2, '0')})`;
+
+  if (!subFeeds.length) {
+    grid.innerHTML = '<div class="intel-empty-chip">No subreddits yet -- click "+ Add Subreddit"</div>';
+    return;
+  }
+
+  grid.innerHTML = subFeeds.map(f => {
+    const name = f.title || f.subreddit_name || 'Subreddit';
+    const shortName = name.replace(/^r\//, '');
+    return `
+      <div class="sub-cluster-card">
+        <div class="sub-cluster-banner">
+          <span class="sub-cluster-banner-text">r/${esc(shortName)}</span>
+        </div>
+        <div class="sub-cluster-body">
+          <div class="sub-cluster-name">r/${esc(shortName)}</div>
+          <div class="sub-cluster-stats">
+            <span class="sub-cluster-stat">Subreddit</span>
+            <button class="sub-cluster-remove" onclick="removeFeed(${f.id})" title="Remove">Remove</button>
           </div>
-          <button class="btn-ghost" style="margin:0; padding:4px 10px; font-size:11px; width:auto; color:var(--danger);" 
-                  onclick="removeFeed(${f.id})">Remove</button>
         </div>
       </div>`;
   }).join('');
 }
 
 function updateTierBadge() {
-  const badge = document.getElementById('feedTierBadge');
-  if (!badge) return;
   const isPro = currentUser && currentUser.plan !== 'free';
   const rssCount = userFeeds.filter(f => f.source_type !== 'reddit').length;
   const redditCount = userFeeds.filter(f => f.source_type === 'reddit').length;
 
-  if (isPro) {
-    badge.textContent = `PRO: ${rssCount} RSS / ${redditCount} Reddit`;
-    badge.style.display = 'inline-block';
-  } else {
-    badge.textContent = `FREE: ${rssCount}/5 RSS - ${redditCount}/2 Reddit`;
-    badge.style.display = 'inline-block';
+  // RSS badge
+  const rssBadge = document.getElementById('rssTierBadge');
+  if (rssBadge) {
+    rssBadge.textContent = isPro ? `PRO: ${rssCount} feeds` : `FREE: ${rssCount}/5 RSS`;
+    rssBadge.style.display = 'inline-block';
+  }
+  // Subreddit badge
+  const subBadge = document.getElementById('subredditTierBadge');
+  if (subBadge) {
+    subBadge.textContent = isPro ? `PRO: ${redditCount} subs` : `FREE: ${redditCount}/2 Reddit`;
+    subBadge.style.display = 'inline-block';
   }
 }
 
@@ -1730,54 +1771,218 @@ function closePreviewPanel() {
   if (panel) panel.style.display = 'none';
 }
 
-// ── Latest Articles (News Feed page) ──────────────────────────────
+// -- RSS Feed Page: Load & Render ------------------------------------------
 
-async function loadNewsFeed() {
-  const list = document.getElementById('newsFeedList');
+let rssCurrentFilter = 'all';
+let rssPageLimit = 20;
+
+async function loadRssFeed() {
+  const list = document.getElementById('rssFeedList');
   if (!list) return;
 
+  // Show loading skeleton
+  list.innerHTML = '<div class="skeleton" style="height:120px; margin:6px 0;"></div>'.repeat(3);
+
   try {
-    const r = await apiFetch('/news/feed?limit=20');
-    if (r.ok) {
-      const data = await r.json();
-      const articles = data.articles || data || [];
-      if (Array.isArray(articles) && articles.length) {
-        list.innerHTML = articles.map(a => `
-          <div class="article-card">
-            <div class="feed-dot" style="background:var(--accent); margin-top:4px;"></div>
-            <div class="article-card-body">
-              <div class="article-card-title">
-                ${a.link ? `<a href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.title || 'Untitled')}</a>` : esc(a.title || 'Untitled')}
-              </div>
-              <div class="article-card-snippet">${esc(a.snippet || a.summary || '')}</div>
-              <div class="article-card-meta">
-                ${a.source_name ? esc(a.source_name) : ''} 
-                ${a.published_at ? ' / ' + new Date(a.published_at).toLocaleDateString() : ''}
-                ${a.relevance_score ? ' / score ' + a.relevance_score.toFixed(1) : ''}
-              </div>
-            </div>
-            <button class="btn-ghost" style="margin:0; padding:4px 8px; font-size:10px; width:auto; white-space:nowrap;" 
-                    onclick="createPostFromArticle(${JSON.stringify(a.title || '').replace(/"/g, '&quot;')}, ${JSON.stringify(a.link || '').replace(/"/g, '&quot;')})">
-              Create Post
-            </button>
-          </div>`).join('');
-      } else {
-        list.innerHTML = '<div class="empty-state" style="padding:30px;">No articles yet. Add feeds and run the pipeline to see content here.</div>';
-      }
-    } else {
-      list.innerHTML = '<div class="empty-state" style="padding:30px;">Could not load articles.</div>';
+    const r = await apiFetch(`/news/feed?limit=${rssPageLimit}`);
+    if (!r.ok) {
+      list.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">Could not load articles.</div>';
+      return;
     }
+
+    let articles = await r.json();
+    if (!Array.isArray(articles)) articles = [];
+
+    // Client-side filter: only RSS items (exclude reddit)
+    articles = articles.filter(a => (a.source_type || '').toLowerCase() !== 'reddit');
+
+    // Client filter tabs
+    if (rssCurrentFilter === 'trending') {
+      articles.sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
+    } else if (rssCurrentFilter === 'recommended') {
+      articles = articles.filter(a => (a.relevance_score || 0) >= 5);
+    }
+
+    if (!articles.length) {
+      list.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">No RSS articles yet. Add feeds and run the pipeline to see content here.</div>';
+      return;
+    }
+
+    list.innerHTML = articles.map(a => {
+      const pubDate = a.published_date ? new Date(a.published_date) : null;
+      const timeAgo = pubDate ? formatTimeAgo(pubDate) : '';
+      const source  = a.source_name || 'RSS';
+      const titleSafe = JSON.stringify(a.title || '').replace(/"/g, '&quot;');
+      const urlSafe   = JSON.stringify(a.url || '').replace(/"/g, '&quot;');
+      const hasImage  = a.image_url;
+
+      return `
+      <div class="intel-article-card">
+        ${hasImage
+          ? `<img class="intel-article-thumb" src="${esc(a.image_url)}" alt="" onerror="this.outerHTML='<div class=\\'intel-article-thumb-fallback\\'><svg width=\\'28\\' height=\\'28\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\'><rect x=\\'3\\' y=\\'3\\' width=\\'18\\' height=\\'18\\' rx=\\'2\\'/><line x1=\\'3\\' y1=\\'9\\' x2=\\'21\\' y2=\\'9\\'/><line x1=\\'9\\' y1=\\'21\\' x2=\\'9\\' y2=\\'9\\'/></svg></div>'">`
+          : `<div class="intel-article-thumb-fallback">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+            </div>`
+        }
+        <div class="intel-article-body">
+          <div class="intel-article-source">
+            <span class="intel-article-source-dot" style="background:var(--accent);"></span>
+            ${esc(source)}
+            ${timeAgo ? ' / ' + timeAgo : ''}
+          </div>
+          <div class="intel-article-title">
+            ${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title || 'Untitled')}</a>` : esc(a.title || 'Untitled')}
+          </div>
+          <div class="intel-article-snippet">${esc(a.snippet || '')}</div>
+          <div class="intel-article-footer">
+            ${a.relevance_score ? `<span class="intel-tag">Score ${a.relevance_score.toFixed(1)}</span>` : ''}
+            <div class="intel-article-action">
+              <button class="intel-create-post-btn" onclick="createPostFromArticle(${titleSafe}, ${urlSafe})">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Create Post
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
   } catch(e) {
-    list.innerHTML = '<div class="empty-state" style="padding:30px;">Failed to load feed.</div>';
+    list.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">Failed to load feed.</div>';
   }
 }
 
-function createPostFromArticle(title, link) {
+function setRssFilter(filter, btnEl) {
+  rssCurrentFilter = filter;
+  document.querySelectorAll('#rssFilterTabs .intel-filter-tab').forEach(t => t.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+  loadRssFeed();
+}
+
+function loadMoreRss() {
+  rssPageLimit += 20;
+  loadRssFeed();
+}
+
+// -- Subreddits Page: Load & Render ----------------------------------------
+
+let subCurrentFilter = 'hot';
+let subPageLimit = 20;
+
+async function loadSubredditsFeed() {
+  const list = document.getElementById('subredditPostList');
+  if (!list) return;
+
+  // Show loading skeleton
+  list.innerHTML = '<div class="skeleton" style="height:100px; margin:6px 0;"></div>'.repeat(3);
+
+  try {
+    const r = await apiFetch(`/news/feed?limit=${subPageLimit}`);
+    if (!r.ok) {
+      list.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">Could not load posts.</div>';
+      return;
+    }
+
+    let articles = await r.json();
+    if (!Array.isArray(articles)) articles = [];
+
+    // Client-side filter: only Reddit items
+    articles = articles.filter(a => (a.source_type || '').toLowerCase() === 'reddit');
+
+    // Sort by filter tab
+    if (subCurrentFilter === 'hot') {
+      articles.sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
+    } else if (subCurrentFilter === 'new') {
+      articles.sort((a, b) => new Date(b.published_date || 0) - new Date(a.published_date || 0));
+    } else if (subCurrentFilter === 'top') {
+      articles.sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
+    }
+    // 'rising' uses default order from API
+
+    if (!articles.length) {
+      list.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">No subreddit posts yet. Add subreddits and run the pipeline.</div>';
+      return;
+    }
+
+    list.innerHTML = articles.map(a => {
+      const pubDate = a.published_date ? new Date(a.published_date) : null;
+      const timeAgo = pubDate ? formatTimeAgo(pubDate) : '';
+      const subName = a.source_name || 'unknown';
+      const score   = a.relevance_score || 0;
+      const scoreStr = score >= 1000 ? (score / 1000).toFixed(1) + 'k' : String(Math.round(score));
+      const titleSafe = JSON.stringify(a.title || '').replace(/"/g, '&quot;');
+      const urlSafe   = JSON.stringify(a.url || '').replace(/"/g, '&quot;');
+
+      return `
+      <div class="intel-post-card">
+        <div class="intel-post-score">
+          <span class="intel-post-score-value">${scoreStr}</span>
+          <span class="intel-post-score-label">PTS</span>
+        </div>
+        <div class="intel-post-body">
+          <div class="intel-post-meta">
+            <span class="intel-post-sub-badge">r/${esc(subName.replace(/^r\//, ''))}</span>
+            <span>Posted ${timeAgo ? timeAgo : 'recently'}</span>
+          </div>
+          <div class="intel-post-title">
+            ${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title || 'Untitled')}</a>` : esc(a.title || 'Untitled')}
+          </div>
+          <div class="intel-post-snippet">${esc(a.snippet || '')}</div>
+          <div class="intel-post-actions">
+            <button class="intel-post-action-btn" onclick="createPostFromArticle(${titleSafe}, ${urlSafe})">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Create Post
+            </button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">Failed to load subreddit feed.</div>';
+  }
+}
+
+function setSubFilter(filter, btnEl) {
+  subCurrentFilter = filter;
+  document.querySelectorAll('#subFilterTabs .intel-filter-tab').forEach(t => t.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+  loadSubredditsFeed();
+}
+
+function loadMoreSubs() {
+  subPageLimit += 20;
+  loadSubredditsFeed();
+}
+
+// ── Carousel Scroll Utility ───────────────────────────────────────
+
+function scrollCarousel(carouselId, direction) {
+  const el = document.getElementById(carouselId);
+  if (!el) return;
+  const scrollAmt = el.clientWidth * 0.6;
+  el.scrollBy({ left: direction * scrollAmt, behavior: 'smooth' });
+}
+
+// ── Time Ago Utility ──────────────────────────────────────────────
+
+function formatTimeAgo(date) {
+  const now = Date.now();
+  const diff = now - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return days + 'd ago';
+  return date.toLocaleDateString();
+}
+
+function createPostFromArticle(title, url) {
   // Open the Studio (Compose) page and prefill with article context
-  goto('studio');
+  navigate('studio');
   setTimeout(() => {
     const ta = document.getElementById('composeBody');
-    if (ta) ta.value = `Here is an interesting article: "${title}"\n\nRead more: ${link}\n\n`;
+    if (ta) ta.value = `Here is an interesting article: "${title}"\n\nRead more: ${url}\n\n`;
     toast('Article loaded into composer', 'success');
   }, 300);
 }
@@ -1990,7 +2195,6 @@ async function loadUserFeeds() {
       userFeeds = await r.json();
       renderActiveFeeds();
       updateTierBadge();
-      loadNewsFeed();
     }
   } catch(e) {}
 }

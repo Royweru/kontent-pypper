@@ -5,6 +5,8 @@ Takes raw ideas and formats them perfectly for selected target platforms.
 Uses LangChain structured output to guarantee schema-valid responses.
 """
 from app.services.ai.llm_client import LLMClient
+from typing import Optional
+from .schemas import EnhancedDraft
 from app.core.config import settings
 
 # ── Service ───────────────────────────────────────────────────────
@@ -29,15 +31,12 @@ You must strictly adhere to the expected schema.
 Return the JSON object exactly with the `drafts` list and `suggested_hashtags` list."""
 
     def __init__(self):
-        self.llm = LLMClient(
-            api_key=settings.OPENAI_API_KEY,
-            model="gpt-5-nano",
-        )
+        self.llm = LLMClient()
 
     async def enhance_draft(
         self,
         raw_content: str,
-        target_platforms: List[str],
+        target_platforms: list[str],
         user_context: Optional[str] = None,
     ) -> EnhancedDraft:
         """

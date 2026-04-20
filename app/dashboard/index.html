@@ -48,8 +48,11 @@
     </button>
 
     <span class="nav-group-label">Intelligence</span>
-    <button class="nav-item"        data-page="news"         onclick="navigate('news')">
-      <span class="nav-icon" aria-hidden="true">◂</span> <span class="nav-label">News Feed</span>
+    <button class="nav-item"        data-page="rss"          onclick="navigate('rss')">
+      <span class="nav-icon" aria-hidden="true">◂</span> <span class="nav-label">RSS Feeds</span>
+    </button>
+    <button class="nav-item"        data-page="subreddits"   onclick="navigate('subreddits')">
+      <span class="nav-icon" aria-hidden="true">◈</span> <span class="nav-label">Subreddits</span>
     </button>
     <button class="nav-item"        data-page="analytics"    onclick="navigate('analytics')">
       <span class="nav-icon" aria-hidden="true">⟁</span> <span class="nav-label">Analytics</span>
@@ -168,52 +171,50 @@
   <!-- ── Studio ────────────────────────────────────────────────── -->
   <section class="page" id="page-studio" aria-label="Studio">
     <!-- Custom Studio Topbar explicitly mapped to the screenshot if we hide the global one -->
-    <div class="studio-topbar-wrapper">
-      <div class="studio-topbar-left">
-        <span class="studio-topbar-title">STUDIO</span>
-        <span class="studio-topbar-muted">DRAFT_MODE::TRUE</span>
-      </div>
-      <div class="studio-topbar-right">
-         <span class="status-pill"><span class="status-dot" aria-hidden="true"></span> AGENT ACTIVE</span>
-         <span class="studio-wireless-icon">((•))</span>
-      </div>
+    <div class="section-header" style="margin-bottom:0; flex-direction: column; align-items: flex-start; gap: 4px;">
+      <span class="glow-label">AI Studio</span>
+      <span class="muted" style="font-size:12px; font-family:var(--font-mono); letter-spacing:0.04em;">
+        Write once — generate for everywhere
+      </span>
     </div>
-    
-    <div class="studio-splash-container">
-       <div class="studio-icon-box">
-          <div class="studio-icon-dot"></div>
-          <div class="studio-icon-tool">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-            </svg>
-          </div>
-          <span class="studio-plus">+</span>
-       </div>
-       <div class="studio-box-text">AI STUDIO</div>
-       
-       <h1 class="studio-hero-title">Create a <span class="accent-text">New Post</span></h1>
-       <p class="studio-hero-desc">
-          Use KontentPyper's AI to break down your ideas into highly-optimized, format-perfect posts for every platform you've connected.
-       </p>
-       
-       <button class="btn-primary studio-btn" onclick="openStudioModal()">
-         <span class="btn-icon">+</span> Start Writing
-       </button>
-       
-       <div class="studio-features">
-         <div class="studio-feature-card">
-            <div class="feature-card-header"><span class="feature-dot"></span> OPTIMIZATION</div>
-            <div class="feature-card-body">AI-OPTIMIZED METADATA FOR EVERY NETWORK.</div>
-         </div>
-         <div class="studio-feature-card">
-            <div class="feature-card-header"><span class="feature-dot"></span> DISTRIBUTION</div>
-            <div class="feature-card-body">ONE-CLICK MULTI-PUBLISH ACROSS YOUR ECOSYSTEM.</div>
-         </div>
-         <div class="studio-feature-card">
-            <div class="feature-card-header"><span class="feature-dot"></span> AUTOMATION</div>
-            <div class="feature-card-body">SCHEDULE INSTANTLY OR PUBLISH TO LIVE QUEUES.</div>
-         </div>
-       </div>
+
+    <div class="studio-empty-state">
+      <!-- Ambient orb behind icon -->
+      <div class="studio-empty-orb" aria-hidden="true"></div>
+
+      <!-- Sparkle icon with pulse -->
+      <div class="studio-empty-icon" aria-hidden="true">✦</div>
+
+      <!-- Heading -->
+      <h2 class="studio-empty-heading">Create a New Post</h2>
+
+      <!-- Subtext -->
+      <p class="studio-empty-sub">
+        Drop your raw idea, link, or thoughts. The AI adapts it 
+        into format-perfect posts for every platform you've connected.
+      </p>
+
+      <!-- CTA -->
+      <button class="btn-primary studio-empty-cta" onclick="openStudioModal()">
+        <span style="font-size:18px; font-weight:200; line-height:0;">+</span>
+        Start Writing
+      </button>
+
+      <!-- Hint strip -->
+      <div class="studio-hints">
+        <div class="studio-hint">
+          <span class="studio-hint-dot"></span>
+          AI-optimized per platform
+        </div>
+        <div class="studio-hint">
+          <span class="studio-hint-dot"></span>
+          One-click multi-publish
+        </div>
+        <div class="studio-hint">
+          <span class="studio-hint-dot"></span>
+          Schedule or publish instantly
+        </div>
+      </div>
     </div>
     
     <div class="studio-bottom-bar">
@@ -332,37 +333,117 @@
     </div>
   </section>
 
-  <!-- ── News Feed / Feeds ──────────────────────────────────────── -->
-  <section class="page" id="page-news" aria-label="News Feed">
-    <div class="section-header" style="margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+  <!-- == RSS Feeds ====================================================== -->
+  <section class="page" id="page-rss" aria-label="RSS Feeds">
+
+    <!-- ── Header ─────────────────────────────────────────────── -->
+    <div class="intel-page-header">
       <div>
-        <span class="glow-label">Feeds</span>
-        <span class="muted" style="font-size:12px; display:block; margin-top:4px;">Manage your content sources</span>
+        <span class="glow-label">Source Network</span>
+        <h1 class="intel-page-title">Active Feeds</h1>
       </div>
-      <div style="display:flex; align-items:center; gap:12px;">
-        <span id="feedTierBadge" class="feed-tier-badge" style="display:none;"></span>
-        <button class="btn-primary" onclick="openExploreFeedsModal()" style="width:auto; margin-top:0; padding:10px 16px;">
-          + Add Feed
-        </button>
+      <div class="intel-header-actions">
+        <span id="rssTierBadge" class="feed-tier-badge" style="display:none;"></span>
+        <button class="btn-primary intel-add-btn" onclick="openExploreFeedsModal('rss')">+ Add Feed</button>
       </div>
     </div>
 
-    <!-- Active Feeds -->
-    <div style="margin-bottom: 32px;">
-      <h3 style="font-size:14px; font-weight:600; color:var(--text); margin-bottom:16px;">Your Active Feeds <span id="activeFeedCount" class="muted" style="font-weight:400; font-size:12px;"></span></h3>
-      <div class="feed-cards-grid" id="activeFeedsGrid">
-        <div class="empty-state" style="grid-column: 1 / -1; padding: 20px;">No feeds added yet. Click "Add Feed" to start.</div>
+    <!-- ── Active Feeds Carousel ──────────────────────────────── -->
+    <div class="intel-carousel-wrap">
+      <button class="intel-carousel-arrow left" onclick="scrollCarousel('activeRssCarousel',-1)" aria-label="Scroll left">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="intel-carousel" id="activeRssCarousel">
+        <div class="intel-carousel-track" id="activeRssGrid">
+          <div class="intel-empty-chip">No feeds yet — click "+ Add Feed"</div>
+        </div>
+      </div>
+      <button class="intel-carousel-arrow right" onclick="scrollCarousel('activeRssCarousel',1)" aria-label="Scroll right">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+
+    <!-- ── Latest Intelligence ────────────────────────────────── -->
+    <div class="intel-feed-header">
+      <h2 class="intel-feed-title">Latest Intelligence</h2>
+      <div class="intel-filter-tabs" id="rssFilterTabs">
+        <button class="intel-filter-tab active" onclick="setRssFilter('all',this)">All Stories</button>
+        <button class="intel-filter-tab" onclick="setRssFilter('trending',this)">Trending</button>
+        <button class="intel-filter-tab" onclick="setRssFilter('recommended',this)">Recommended</button>
       </div>
     </div>
 
-    <!-- Feed Content -->
-    <div>
-      <h3 style="font-size:14px; font-weight:600; color:var(--text); margin-bottom:16px;">Latest Articles</h3>
-      <div class="feed" id="newsFeedList">
-        <div class="skeleton" style="height:80px; margin:4px 0;"></div>
-        <div class="skeleton" style="height:80px; margin:4px 0;"></div>
-        <div class="skeleton" style="height:80px; margin:4px 0;"></div>
+    <div class="intel-article-list" id="rssFeedList">
+      <div class="skeleton" style="height:120px; margin:6px 0;"></div>
+      <div class="skeleton" style="height:120px; margin:6px 0;"></div>
+      <div class="skeleton" style="height:120px; margin:6px 0;"></div>
+    </div>
+
+    <!-- ── Load More ──────────────────────────────────────────── -->
+    <div class="intel-load-more-wrap">
+      <button class="intel-load-more-btn" onclick="loadMoreRss()">
+        Load More Intel
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+    </div>
+  </section>
+
+  <!-- == Subreddits ====================================================== -->
+  <section class="page" id="page-subreddits" aria-label="Subreddits">
+
+    <!-- ── Header ─────────────────────────────────────────────── -->
+    <div class="intel-page-header">
+      <div>
+        <span class="glow-label">Core Connections</span>
+        <h1 class="intel-page-title">Create from Subreddits</h1>
       </div>
+      <div class="intel-header-actions">
+        <span id="subredditTierBadge" class="feed-tier-badge" style="display:none;"></span>
+        <button class="btn-primary intel-add-btn" onclick="openExploreFeedsModal('reddit')">+ Add Subreddit</button>
+      </div>
+    </div>
+
+    <!-- ── Active Clusters Carousel ───────────────────────────── -->
+    <div class="sub-clusters-label">
+      Active Clusters <span class="muted" id="activeSubCount">(0)</span>
+    </div>
+    <div class="intel-carousel-wrap">
+      <button class="intel-carousel-arrow left" onclick="scrollCarousel('activeSubCarousel',-1)" aria-label="Scroll left">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="intel-carousel" id="activeSubCarousel">
+        <div class="intel-carousel-track" id="activeSubredditsGrid">
+          <div class="intel-empty-chip">No subreddits yet — click "+ Add Subreddit"</div>
+        </div>
+      </div>
+      <button class="intel-carousel-arrow right" onclick="scrollCarousel('activeSubCarousel',1)" aria-label="Scroll right">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+
+    <!-- ── Aggregated Intelligence ────────────────────────────── -->
+    <div class="intel-feed-header">
+      <h2 class="intel-feed-title">Aggregated Intelligence</h2>
+      <div class="intel-filter-tabs" id="subFilterTabs">
+        <button class="intel-filter-tab active" onclick="setSubFilter('hot',this)">Hot</button>
+        <button class="intel-filter-tab" onclick="setSubFilter('new',this)">New</button>
+        <button class="intel-filter-tab" onclick="setSubFilter('rising',this)">Rising</button>
+        <button class="intel-filter-tab" onclick="setSubFilter('top',this)">Top</button>
+      </div>
+    </div>
+
+    <div class="intel-post-list" id="subredditPostList">
+      <div class="skeleton" style="height:140px; margin:6px 0;"></div>
+      <div class="skeleton" style="height:140px; margin:6px 0;"></div>
+      <div class="skeleton" style="height:140px; margin:6px 0;"></div>
+    </div>
+
+    <!-- ── Load More ──────────────────────────────────────────── -->
+    <div class="intel-load-more-wrap">
+      <button class="intel-load-more-btn" onclick="loadMoreSubs()">
+        Initialize Mega Data
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
     </div>
   </section>
 
@@ -554,8 +635,7 @@
 
       <!-- Badges Row -->
       <div class="pipeline-badge-row">
-        <span class="pipeline-chip" id="pipelineVersionChip">LANGGRAPH v2.x</span>
-        <span class="pipeline-live-badge" id="pipelineLiveBadge">
+        <span class="pipeline-live-badge visible" id="pipelineLiveBadge">
           <span class="pipeline-live-dot"></span> LIVE
         </span>
       </div>
@@ -563,7 +643,7 @@
       <!-- Vertical Timeline Stepper -->
       <div class="pipeline-stepper" id="pipelineStepper">
 
-        <div class="pipeline-step" id="pipelineStep-fetch" data-state="idle">
+        <div class="pipeline-step" id="pipelineStep-fetch" data-state="completed">
           <div class="step-indicator">
             <div class="step-icon">
               <svg class="step-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -574,11 +654,11 @@
           </div>
           <div class="step-content">
             <div class="step-label">Fetching News Feeds</div>
-            <div class="step-meta" id="stepMeta-fetch">QUEUED</div>
+            <div class="step-meta" id="stepMeta-fetch">COMPLETED • 1.2S</div>
           </div>
         </div>
 
-        <div class="pipeline-step" id="pipelineStep-score" data-state="idle">
+        <div class="pipeline-step" id="pipelineStep-score" data-state="active">
           <div class="step-indicator">
             <div class="step-icon">
               <svg class="step-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -589,7 +669,7 @@
           </div>
           <div class="step-content">
             <div class="step-label">Analyzing Subreddits</div>
-            <div class="step-meta" id="stepMeta-score">QUEUED</div>
+            <div class="step-meta" id="stepMeta-score">IN PROGRESS — R/ARTIFICIAL, R/MACHINELEARNING</div>
           </div>
         </div>
 
@@ -635,16 +715,35 @@
           <span class="console-title">CONSOLE OUTPUT</span>
         </div>
         <div class="console-body" id="pipelineConsole">
-          <!-- Log entries injected by JS -->
+          <div class="log-entry">
+            <span class="log-time">10:01:00</span>
+            <span class="log-tag-sys">[SYS]</span>
+            <span class="log-msg">Initializing agent pool...</span>
+          </div>
+          <div class="log-entry">
+            <span class="log-time">10:01:01</span>
+            <span class="log-tag-ai">[AI]</span>
+            <span class="log-msg">Parsing historical success metrics</span>
+          </div>
+          <div class="log-entry">
+            <span class="log-time">10:01:02</span>
+            <span class="log-tag-data">[DATA]</span>
+            <span class="log-msg">Fetch complete: 8 subreddits scanned</span>
+          </div>
+          <div class="log-entry processing">
+            <span class="log-time">10:01:03</span>
+            <span class="log-tag-sys">[SYS]</span>
+            <span class="log-msg">Generating thread drafts<span class="terminal-dots">...</span></span>
+          </div>
         </div>
       </div>
 
       <!-- Action Buttons -->
       <div class="pipeline-actions">
         <button class="pipeline-btn-cancel" id="pipelineCancelBtn" onclick="cancelPipeline()">CANCEL</button>
-        <button class="pipeline-btn-primary" id="runPipelineBtn" onclick="startWorkflow()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          RUN PIPELINE
+        <button class="pipeline-btn-primary running" id="runPipelineBtn" onclick="pauseWorkflow()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          PAUSE PIPELINE
         </button>
       </div>
 

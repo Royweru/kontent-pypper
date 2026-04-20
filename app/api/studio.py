@@ -18,7 +18,7 @@ router = APIRouter()
 
 # Instantiate services once at module level (singleton pattern)
 _enhancer = EnhancerService()
-_chat_llm = LLMClient(api_key=settings.OPENAI_API_KEY, model="gpt-5-nano")
+_chat_llm = LLMClient()
 
 
 # ── Request Schemas ───────────────────────────────────────────────
