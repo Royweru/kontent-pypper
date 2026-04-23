@@ -182,6 +182,14 @@ class StoryContent(Base):
     user = relationship("User", back_populates="story_contents")
 
 class AssetLibrary(Base):
+    """
+    Central asset store for all pipeline-generated content.
+
+    Status workflow:
+      pending_review → approved → published
+                     → rejected
+                     → scheduled (with scheduled_publish_at set)
+    """
     __tablename__ = "asset_library"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -191,19 +199,43 @@ class AssetLibrary(Base):
         nullable=False,
         index=True,
     )
-    
-    asset_type = Column(String, nullable=False) # 'video', 'image', 'text'
+
+    asset_type = Column(String, nullable=False)  # 'video', 'image', 'text', 'bundle'
     title = Column(String, nullable=True)
-    content_url = Column(String, nullable=True) # S3 or local path for videos/images
-    text_content = Column(Text, nullable=True) # For text assets like drafts
-    
+    content_url = Column(String, nullable=True)  # S3 or local path for videos/images
+    text_content = Column(Text, nullable=True)   # For text assets like drafts
+
     file_size_bytes = Column(Integer, nullable=True)
-    duration_seconds = Column(Integer, nullable=True) # For videos
-    
+    duration_seconds = Column(Integer, nullable=True)  # For videos
+
     is_favorite = Column(Boolean, server_default=text("FALSE"))
-    
-    platforms_used = Column(JSON, nullable=True) # E.g., ['twitter', 'linkedin']
-    
+
+    platforms_used = Column(JSON, nullable=True)   # E.g., ['twitter', 'linkedin']
+
+    # ── Review Queue fields (Phase 5B) ────────────────────────────────
+    status = Column(String, server_default=text("'draft'"), index=True)
+    # Values: draft | pending_review | approved | published | rejected | scheduled
+
+    platform_drafts = Column(JSON, nullable=True)
+    # { "twitter": "...", "linkedin": "...", "tiktok": "..." }
+
+    video_script_data = Column(JSON, nullable=True)
+    # Structured script: { title, hook, points, cta, hashtags, narration }
+
+    source_article_title = Column(String, nullable=True)
+    source_article_url = Column(String, nullable=True)
+
+    video_model_used = Column(String, nullable=True)   # stock | kling | runway | sora
+    credits_consumed = Column(Integer, server_default=text("0"))
+
+    scheduled_publish_at = Column(DateTime, nullable=True)
+    published_at = Column(DateTime, nullable=True)
+    rejected_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+
+    workflow_run_id = Column(String, nullable=True, index=True)
+    # Groups assets from the same pipeline run
+
     created_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
     updated_at = Column(
         DateTime,

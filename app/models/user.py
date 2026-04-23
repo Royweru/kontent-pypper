@@ -99,6 +99,9 @@ class User(Base):
     story_contents = relationship(
         "StoryContent", back_populates="user", cascade="all, delete-orphan"
     )
+    agent_campaigns = relationship(
+        "AgentCampaign", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Subscription(Base):

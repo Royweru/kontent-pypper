@@ -37,6 +37,10 @@
     </button>
 
     <span class="nav-group-label">Automation</span>
+    <button class="nav-item"        data-page="review"       onclick="navigate('review')">
+      <span class="nav-icon" aria-hidden="true">◆</span> <span class="nav-label">Review Queue</span>
+      <span class="nav-badge" id="reviewQueueBadge" style="display:none;">0</span>
+    </button>
     <button class="nav-item"        data-page="connections"  onclick="navigate('connections')">
       <span class="nav-icon" aria-hidden="true">⌬</span> <span class="nav-label">Connections</span>
     </button>
@@ -299,6 +303,7 @@
         </div>
         <div id="studioValidationErrors" style="display:none; color:#ff4d4f; font-size:12px; margin:0 16px; flex:1; text-align:right;"></div>
         <div class="studio-modal-footer-right">
+          <button class="btn-ghost" id="enhanceBtn" onclick="enhanceContent()" style="margin:0; width:auto; border: 1px solid var(--accent); color: var(--accent); padding: 10px 16px;">✦ ENHANCE WITH AI</button>
           <button class="btn-ghost" onclick="toast('Scheduling coming soon', 'warning')" style="margin:0; width:auto; padding: 10px 16px;">Schedule</button>
           <button class="btn-primary" id="publishBtn" onclick="publishContent()" style="margin:0; width:auto; padding: 10px 24px;">Publish Now</button>
         </div>
@@ -324,14 +329,169 @@
     </div>
   </section>
 
-  <!-- ── Campaigns ─────────────────────────────────────────────── -->
-  <section class="page" id="page-campaigns" aria-label="Campaigns">
-    <div class="coming-soon">
-      <span class="icon" aria-hidden="true">◉</span>
-      <h2>Video Campaigns</h2>
-      <p class="muted">Autonomous campaign engine coming in Phase 7</p>
+  <!-- ── Autonomous Campaigns ───────────────────────────────────── -->
+  <section class="page" id="page-campaigns" aria-label="Autonomous Campaigns">
+
+    <!-- Header -->
+    <div class="intel-page-header">
+      <div>
+        <span class="glow-label">Autonomous Campaigns</span>
+        <h1 class="intel-page-title">Campaign Engine</h1>
+      </div>
+      <div class="intel-header-actions">
+        <button class="btn-primary intel-add-btn" id="campaignCreateBtn" onclick="openCampaignModal()">+ New Campaign</button>
+      </div>
     </div>
+
+    <!-- Tier Gate (shown if not Max) -->
+    <div id="campaignTierGate" style="display:none; margin-bottom:24px;">
+      <div style="padding:28px; background:rgba(200,249,81,0.04); border:1px solid rgba(200,249,81,0.1); border-radius:var(--radius); text-align:center;">
+        <div style="font-size:28px; margin-bottom:10px;">◉</div>
+        <div style="font-size:16px; font-weight:600; margin-bottom:6px;">Autonomous Campaigns require the Max plan</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-bottom:20px; max-width:400px; margin-left:auto; margin-right:auto; line-height:1.6;">Let the AI agent autonomously find stories, create content, and publish to your platforms on a recurring schedule.</div>
+        <button class="btn-primary" style="width:auto; padding:10px 28px; font-size:13px;" onclick="toast('Upgrade flow coming soon', 'info')">Upgrade to Max</button>
+      </div>
+    </div>
+
+    <!-- Campaign Stats Row (shown if Max) -->
+    <div id="campaignStatsRow" class="stats-row" style="margin-bottom:24px; display:none;">
+      <div class="stat-card" style="text-align:center;">
+        <div class="stat-label">Active Campaigns</div>
+        <div class="stat-value mono accent-text" id="cmpStatActive">0</div>
+      </div>
+      <div class="stat-card" style="text-align:center;">
+        <div class="stat-label">Total Runs</div>
+        <div class="stat-value mono" id="cmpStatTotalRuns">0</div>
+      </div>
+      <div class="stat-card" style="text-align:center;">
+        <div class="stat-label">Posts Published</div>
+        <div class="stat-value mono" id="cmpStatPublished">0</div>
+      </div>
+      <div class="stat-card" style="text-align:center;">
+        <div class="stat-label">Credits Used</div>
+        <div class="stat-value mono" id="cmpStatCredits">0</div>
+      </div>
+    </div>
+
+    <!-- Campaign List Container (shown if Max) -->
+    <div id="campaignList" style="display:none;">
+      <div class="skeleton" style="height:120px; margin:8px 0;"></div>
+      <div class="skeleton" style="height:120px; margin:8px 0;"></div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="campaignEmptyState" style="display:none;">
+      <div class="surface-card" style="text-align:center; padding:48px 24px;">
+        <div style="font-size:40px; margin-bottom:12px;">◉</div>
+        <div style="font-size:16px; font-weight:500; margin-bottom:8px;">No Campaigns Yet</div>
+        <div style="font-size:13px; color:var(--text-muted); max-width:380px; margin:0 auto 20px; line-height:1.6;">Create your first autonomous campaign to let the AI agent find, create, and publish content on autopilot.</div>
+        <button class="btn-primary" style="width:auto; padding:10px 24px; margin:0 auto;" onclick="openCampaignModal()">+ Create Campaign</button>
+      </div>
+    </div>
+
   </section>
+
+  <!-- ── Campaign Create/Edit Modal ──────────────────────────────── -->
+  <div class="studio-modal-overlay" id="campaignModalOverlay">
+    <div class="studio-modal" style="max-width: 640px; height: auto; max-height: 90vh;">
+      <div class="studio-modal-header">
+        <div class="studio-modal-title">
+          <span style="color: var(--accent);">◉</span>
+          <span id="campaignModalTitle">New Campaign</span>
+        </div>
+        <button class="studio-modal-close" onclick="closeCampaignModal()">x</button>
+      </div>
+      <div class="studio-modal-body" style="flex-direction:column; padding:24px; overflow-y:auto; gap:20px;">
+
+        <!-- Name -->
+        <div>
+          <label class="cmp-label">Campaign Name</label>
+          <input type="text" id="cmpName" class="cmp-input" placeholder="e.g. Daily AI News Pipeline" maxlength="100" />
+        </div>
+
+        <!-- Niche / Topic -->
+        <div>
+          <label class="cmp-label">Niche / Topic</label>
+          <input type="text" id="cmpNiche" class="cmp-input" placeholder="e.g. artificial intelligence, machine learning" />
+        </div>
+
+        <!-- Topic Instructions -->
+        <div>
+          <label class="cmp-label">Topic Instructions <span class="muted" style="font-size:10px; text-transform:none;">(optional)</span></label>
+          <textarea id="cmpInstructions" class="cmp-textarea" placeholder="Additional context for the agent: focus areas, tone, audience..." rows="3"></textarea>
+        </div>
+
+        <!-- Schedule -->
+        <div>
+          <label class="cmp-label">Schedule</label>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <button class="schedule-preset-btn active" data-cmp-preset="0 8 * * *" onclick="selectCampaignPreset('0 8 * * *', this)">
+              <span>Morning (8 AM)</span>
+            </button>
+            <button class="schedule-preset-btn" data-cmp-preset="0 12 * * *" onclick="selectCampaignPreset('0 12 * * *', this)">
+              <span>Midday (12 PM)</span>
+            </button>
+            <button class="schedule-preset-btn" data-cmp-preset="0 18 * * *" onclick="selectCampaignPreset('0 18 * * *', this)">
+              <span>Evening (6 PM)</span>
+            </button>
+            <button class="schedule-preset-btn" data-cmp-preset="0 9 * * 1-5" onclick="selectCampaignPreset('0 9 * * 1-5', this)">
+              <span>Weekdays (9 AM)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Max Runs Per Day -->
+        <div>
+          <label class="cmp-label">Max Runs Per Day</label>
+          <select id="cmpMaxRuns" class="cmp-input" style="cursor:pointer;">
+            <option value="1">1 run / day</option>
+            <option value="2">2 runs / day</option>
+            <option value="3" selected>3 runs / day</option>
+            <option value="5">5 runs / day</option>
+          </select>
+        </div>
+
+        <!-- Target Platforms -->
+        <div>
+          <label class="cmp-label">Target Platforms</label>
+          <div id="cmpPlatformToggles" class="cmp-platform-grid"></div>
+        </div>
+
+        <!-- Auto Publish Toggle -->
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:var(--base); border:1px solid var(--border); border-radius:var(--radius);">
+          <div>
+            <div style="font-size:14px; font-weight:500;">Auto-Publish</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Publish instantly or save to Review Queue</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="cmpAutoPublish"><span class="slider"></span></label>
+        </div>
+
+      </div>
+      <div class="studio-modal-footer" style="justify-content:flex-end; gap:12px;">
+        <button class="btn-ghost" onclick="closeCampaignModal()" style="width:auto; padding:10px 20px;">Cancel</button>
+        <button class="btn-primary" id="cmpSaveBtn" onclick="saveCampaign()" style="width:auto; padding:10px 28px; margin:0;">Create Campaign</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Campaign Run History Modal ───────────────────────────────── -->
+  <div class="studio-modal-overlay" id="campaignRunsOverlay">
+    <div class="studio-modal" style="max-width: 780px; height: 80vh;">
+      <div class="studio-modal-header">
+        <div class="studio-modal-title">
+          <span style="color: var(--accent);">◉</span>
+          <span id="campaignRunsTitle">Run History</span>
+        </div>
+        <button class="studio-modal-close" onclick="closeCampaignRunsModal()">x</button>
+      </div>
+      <div class="studio-modal-body" style="flex-direction:column; padding:0; overflow-y:auto;">
+        <div id="campaignRunsList" style="padding:16px;">
+          <div class="skeleton" style="height:80px; margin:8px 0;"></div>
+          <div class="skeleton" style="height:80px; margin:8px 0;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- == RSS Feeds ====================================================== -->
   <section class="page" id="page-rss" aria-label="RSS Feeds">
@@ -547,6 +707,116 @@
         </div>
         <button class="btn-primary" id="tgDetectBtn" onclick="detectTelegramChat()" style="background:var(--lavender); width:auto; padding:11px 20px; font-size:12px;">Detect Chat ID</button>
         <span class="muted" id="tgDetectMsg" style="font-size:12px; margin-left:10px;"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Review Queue (Phase 5B) ─────────────────────────────────── -->
+  <section class="page" id="page-review" aria-label="Review Queue">
+    <div class="section-header" style="margin-bottom:20px;">
+      <span class="glow-label">Review Queue</span>
+      <span class="muted" style="font-size:12px;">Approve, reject, or schedule pipeline-generated content</span>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div class="intel-filter-bar" id="reviewFilterTabs" style="margin-bottom:16px;">
+      <button class="intel-filter-tab active" onclick="setReviewFilter('pending_review', this)">Pending Review</button>
+      <button class="intel-filter-tab" onclick="setReviewFilter('approved', this)">Approved</button>
+      <button class="intel-filter-tab" onclick="setReviewFilter('scheduled', this)">Scheduled</button>
+      <button class="intel-filter-tab" onclick="setReviewFilter('published', this)">Published</button>
+      <button class="intel-filter-tab" onclick="setReviewFilter('rejected', this)">Rejected</button>
+    </div>
+
+    <!-- Queue List -->
+    <div id="reviewQueueList">
+      <div class="skeleton" style="height:140px; margin:8px 0;"></div>
+      <div class="skeleton" style="height:140px; margin:8px 0;"></div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="reviewEmptyState" style="display:none;">
+      <div class="surface-card" style="text-align:center; padding:48px 24px;">
+        <div style="font-size:40px; margin-bottom:12px;">✦</div>
+        <div style="font-size:16px; font-weight:500; margin-bottom:8px;">No items in this queue</div>
+        <div style="font-size:13px; color:var(--text-muted);">Run the pipeline or enable scheduled automation to populate your review queue.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Schedule Automation (Phase 5A) ──────────────────────────── -->
+  <section class="page" id="page-schedule" aria-label="Schedule">
+    <div class="section-header" style="margin-bottom:20px;">
+      <span class="glow-label">Schedule Automation</span>
+      <span class="muted" style="font-size:12px;">Configure autonomous pipeline runs (Max tier)</span>
+    </div>
+
+    <div class="surface-card" style="max-width:640px;" id="schedulePanel">
+      <!-- Tier Gate Banner -->
+      <div id="scheduleTierGate" style="display:none;">
+        <div style="padding:20px; background:rgba(200,249,81,0.04); border:1px solid rgba(200,249,81,0.1); border-radius:var(--radius); text-align:center;">
+          <div style="font-size:24px; margin-bottom:8px;">⚡</div>
+          <div style="font-size:15px; font-weight:500; margin-bottom:6px;">Scheduled automation requires the Max plan</div>
+          <div style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Upgrade to run your content pipeline automatically on a daily schedule.</div>
+          <button class="btn-primary" style="width:auto; padding:10px 28px; font-size:13px;" onclick="toast('Upgrade flow coming soon', 'info')">Upgrade to Max</button>
+        </div>
+      </div>
+
+      <!-- Schedule Config (shown if Max tier) -->
+      <div id="scheduleConfig" style="display:none;">
+        <div class="section-header" style="margin-bottom:20px;">
+          <span class="section-title">Pipeline Schedule</span>
+        </div>
+
+        <!-- Preset Selector -->
+        <div style="margin-bottom:20px;">
+          <label style="display:block; font-family:var(--font-mono); font-size:11px; letter-spacing:0.08em; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px;">Run Frequency</label>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <button class="schedule-preset-btn active" data-preset="daily_8am" onclick="selectSchedulePreset('daily_8am', this)">
+              <span style="font-size:16px;">🌅</span>
+              <span>Daily at 8:00 AM</span>
+            </button>
+            <button class="schedule-preset-btn" data-preset="daily_12pm" onclick="selectSchedulePreset('daily_12pm', this)">
+              <span style="font-size:16px;">☀️</span>
+              <span>Daily at 12:00 PM</span>
+            </button>
+            <button class="schedule-preset-btn" data-preset="daily_6pm" onclick="selectSchedulePreset('daily_6pm', this)">
+              <span style="font-size:16px;">🌆</span>
+              <span>Daily at 6:00 PM</span>
+            </button>
+            <button class="schedule-preset-btn" data-preset="weekdays_9am" onclick="selectSchedulePreset('weekdays_9am', this)">
+              <span style="font-size:16px;">💼</span>
+              <span>Weekdays at 9:00 AM</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Toggle -->
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:16px; background:var(--base); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:20px;">
+          <div>
+            <div style="font-size:14px; font-weight:500;">Enable Scheduled Runs</div>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Pipeline will run automatically at the selected time</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="scheduleActiveToggle" onchange="toggleScheduleActive()"><span class="slider"></span></label>
+        </div>
+
+        <!-- Stats -->
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:20px;">
+          <div class="stat-card" style="text-align:center;">
+            <div class="stat-label">Total Runs</div>
+            <div class="stat-value mono" id="schedTotalRuns">0</div>
+          </div>
+          <div class="stat-card" style="text-align:center;">
+            <div class="stat-label">Last Run</div>
+            <div class="stat-value" style="font-size:13px;" id="schedLastRun">—</div>
+          </div>
+          <div class="stat-card" style="text-align:center;">
+            <div class="stat-label">Status</div>
+            <div class="stat-value" style="font-size:13px;" id="schedLastStatus">—</div>
+          </div>
+        </div>
+
+        <!-- Save Button -->
+        <button class="btn-primary" id="schedSaveBtn" onclick="saveSchedule()" style="width:100%;">Save Schedule</button>
       </div>
     </div>
   </section>

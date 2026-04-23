@@ -23,9 +23,33 @@ async def lifespan(application: FastAPI):
     """Startup and shutdown lifecycle hooks."""
     print(f"[KontentPyper] Starting up...")
     start_scheduler()
+    # Restore active user cron jobs from the database
+    await _restore_user_cron_jobs()
     yield
     print(f"[KontentPyper] Shutting down...")
     stop_scheduler()
+
+
+async def _restore_user_cron_jobs():
+    """Re-registers all active ScheduledJob cron entries on startup."""
+    from sqlalchemy import select
+    from app.core.database import AsyncSessionLocal
+    from app.models.schedule import ScheduledJob
+    from app.api.schedule import _register_user_cron
+
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(ScheduledJob).where(ScheduledJob.is_active == True)
+            )
+            jobs = result.scalars().all()
+
+            for job in jobs:
+                _register_user_cron(job.user_id, job.cron_hour, job.cron_minute, job.cron_dow)
+
+            print(f"[KontentPyper] Restored {len(jobs)} active cron job(s).")
+    except Exception as exc:
+        print(f"[KontentPyper] Warning: Could not restore cron jobs: {exc}")
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -46,7 +70,7 @@ app.add_middleware(
 # -- API Routes -------------------------------------------------------------
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 
-from app.api import social, studio, analytics, news, posts, media, workflow, assets
+from app.api import social, studio, analytics, news, posts, media, workflow, assets, schedule, review, campaigns
 app.include_router(social.router,    prefix="/api/v1/social",    tags=["social"])
 app.include_router(studio.router,    prefix="/api/v1/studio",    tags=["studio"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
@@ -55,6 +79,9 @@ app.include_router(posts.router,     prefix="/api/v1/posts",     tags=["posts"])
 app.include_router(media.router,     prefix="/api/v1/media",     tags=["media"])
 app.include_router(assets.router,    prefix="/api/v1/assets",    tags=["assets"])
 app.include_router(workflow.router,  prefix="/api/v1/workflow",  tags=["workflow"])
+app.include_router(schedule.router,  prefix="/api/v1/schedule",  tags=["schedule"])
+app.include_router(review.router,    prefix="/api/v1/review",    tags=["review"])
+app.include_router(campaigns.router, prefix="/api/v1/campaigns", tags=["campaigns"])
 
 # -- Dashboard UI -----------------------------------------------------------
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])

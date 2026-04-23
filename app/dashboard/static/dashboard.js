@@ -37,6 +37,7 @@ const PLATFORMS = [
 const PAGE_TITLES = {
   overview:    'Overview',
   studio:      'Studio',
+  review:      'Review Queue',
   connections: 'Connections',
   schedule:    'Schedule',
   campaigns:   'Campaigns',
@@ -98,6 +99,9 @@ function navigate(pageId) {
   if (pageId === 'connections') renderPlatforms();
   if (pageId === 'analytics')   loadAnalytics();
   if (pageId === 'settings')    loadTelegramSettings();
+  if (pageId === 'review')      loadReviewQueue();
+  if (pageId === 'schedule')    loadScheduleConfig();
+  if (pageId === 'campaigns')   loadCampaigns();
 }
 
 // ── Auth & user ───────────────────────────────────────────────────
@@ -1978,13 +1982,7 @@ function formatTimeAgo(date) {
 }
 
 function createPostFromArticle(title, url) {
-  // Open the Studio (Compose) page and prefill with article context
-  navigate('studio');
-  setTimeout(() => {
-    const ta = document.getElementById('composeBody');
-    if (ta) ta.value = `Here is an interesting article: "${title}"\n\nRead more: ${url}\n\n`;
-    toast('Article loaded into composer', 'success');
-  }, 300);
+  sendNewsToStudio(title, url);
 }
 
 // ── Boot: load user feeds ─────────────────────────────────────────
@@ -2267,3 +2265,713 @@ window.saveAssetsToLibrary = async function() {
 };
 
 
+// ══════════════════════════════════════════════════════════════════════
+// ── Phase 5B: Review Queue ────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
+
+let reviewCurrentFilter = 'pending_review';
+
+async function loadReviewQueue() {
+  const list = document.getElementById('reviewQueueList');
+  const empty = document.getElementById('reviewEmptyState');
+  if (!list) return;
+
+  empty.style.display = 'none';
+  list.innerHTML = '<div class="skeleton" style="height:140px; margin:8px 0;"></div>'.repeat(3);
+
+  try {
+    const r = await apiFetch(`/review/queue?status_filter=${reviewCurrentFilter}`);
+    if (!r.ok) {
+      list.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">Could not load queue.</div>';
+      return;
+    }
+
+    const items = await r.json();
+    if (!items.length) {
+      list.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+
+    list.innerHTML = items.map(renderReviewCard).join('');
+  } catch (e) {
+    list.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">Failed to load review queue.</div>';
+  }
+}
+
+function renderReviewCard(item) {
+  const timeAgo = item.created_at ? formatTimeAgo(new Date(item.created_at)) : '';
+  const statusColors = {
+    pending_review: 'var(--warning, #f59e0b)',
+    approved: 'var(--success, #22c55e)',
+    published: 'var(--accent)',
+    rejected: 'var(--danger, #ef4444)',
+    scheduled: 'var(--lavender, #c8bfff)',
+  };
+  const statusColor = statusColors[item.status] || 'var(--text-muted)';
+  const statusLabel = (item.status || '').replace('_', ' ').toUpperCase();
+
+  // Platform pills
+  const platforms = (item.platforms_used || []).map(p =>
+    `<span style="display:inline-block; padding:2px 8px; background:rgba(200,249,81,0.06); border:1px solid rgba(200,249,81,0.15); border-radius:12px; font-size:10px; font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.05em;">${esc(p)}</span>`
+  ).join('');
+
+  // Draft preview
+  const drafts = item.platform_drafts || {};
+  const firstDraft = Object.values(drafts)[0] || item.text_content || '';
+  const previewText = firstDraft.length > 160 ? firstDraft.slice(0, 160) + '…' : firstDraft;
+
+  // Action buttons (only for pending_review)
+  let actions = '';
+  if (item.status === 'pending_review') {
+    actions = `
+    <div style="display:flex; gap:8px; margin-top:12px;">
+      <button class="btn-primary" style="width:auto; padding:6px 16px; font-size:12px; margin-top:0;" onclick="reviewAction(${item.id}, 'approve')">
+        ✅ Approve
+      </button>
+      <button class="btn-secondary" style="width:auto; padding:6px 16px; font-size:12px;" onclick="reviewAction(${item.id}, 'reject')">
+        ✕ Reject
+      </button>
+      <button class="btn-ghost" style="padding:6px 16px; font-size:12px;" onclick="openReviewDetail(${item.id})">
+        👁 Preview
+      </button>
+    </div>`;
+  }
+
+  return `
+  <div class="surface-card" style="margin-bottom:12px; padding:16px;">
+    <div style="display:flex; align-items:flex-start; gap:16px;">
+      ${item.content_url
+        ? `<div style="width:100px; height:80px; background:var(--base); border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; flex-shrink:0;">
+             <video src="${esc(item.content_url)}" style="width:100%; height:100%; object-fit:cover;" muted></video>
+           </div>`
+        : `<div style="width:100px; height:80px; background:var(--base); border:1px solid var(--border); border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; flex-shrink:0; color:var(--text-muted); font-size:24px;">✦</div>`
+      }
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${statusColor};"></span>
+          <span style="font-family:var(--font-mono); font-size:10px; letter-spacing:0.08em; color:${statusColor};">${statusLabel}</span>
+          <span style="font-size:11px; color:var(--text-muted);">${timeAgo}</span>
+          ${item.video_model_used ? `<span style="font-family:var(--font-mono); font-size:10px; color:var(--text-dim); background:var(--surface2); padding:1px 6px; border-radius:4px;">${esc(item.video_model_used)}</span>` : ''}
+        </div>
+        <div style="font-size:14px; font-weight:500; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(item.title || 'Untitled content')}</div>
+        <div style="font-size:12px; color:var(--text-muted); line-height:1.5; margin-bottom:6px;">${esc(previewText)}</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">${platforms}</div>
+        ${actions}
+      </div>
+    </div>
+  </div>`;
+}
+
+function setReviewFilter(filter, btnEl) {
+  reviewCurrentFilter = filter;
+  document.querySelectorAll('#reviewFilterTabs .intel-filter-tab').forEach(t => t.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+  loadReviewQueue();
+}
+
+async function reviewAction(assetId, action) {
+  const confirmMsg = action === 'reject'
+    ? 'Reject this content? It will be moved to the rejected list.'
+    : 'Approve and publish this content?';
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const r = await apiFetch(`/review/${assetId}/action`, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: action,
+        platforms: ['twitter', 'linkedin'],
+      }),
+    });
+
+    if (r.ok) {
+      toast(`Content ${action === 'approve' ? 'approved & published' : 'rejected'} successfully!`, 'success');
+      loadReviewQueue();
+      pollReviewBadge();
+    } else {
+      const err = await r.json().catch(() => ({}));
+      toast(err.detail || `Failed to ${action}`, 'error');
+    }
+  } catch (e) {
+    toast(`Error: ${e.message}`, 'error');
+  }
+}
+
+async function openReviewDetail(assetId) {
+  try {
+    const r = await apiFetch(`/review/${assetId}`);
+    if (!r.ok) { toast('Could not load detail', 'error'); return; }
+    const item = await r.json();
+
+    // Reuse the HITL modal for review detail
+    const overlay = document.getElementById('hitlModalOverlay');
+    if (!overlay) return;
+
+    // Set video
+    const videoContainer = document.getElementById('hitlVideoContainer');
+    if (videoContainer && item.content_url) {
+      videoContainer.innerHTML = `<video src="${esc(item.content_url)}" controls style="width:100%; height:100%; object-fit:contain;"></video>`;
+    }
+
+    // Set caption
+    const captionInput = document.getElementById('hitlCaptionInput');
+    if (captionInput) {
+      const drafts = item.platform_drafts || {};
+      captionInput.value = Object.values(drafts)[0] || item.text_content || '';
+    }
+
+    overlay.classList.add('open');
+  } catch (e) {
+    toast('Failed to load review detail', 'error');
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// ── Phase 5B: Review Queue Badge (Notification) ───────────────────────
+// ══════════════════════════════════════════════════════════════════════
+
+async function pollReviewBadge() {
+  try {
+    const r = await apiFetch('/review/queue/count');
+    if (!r.ok) return;
+    const data = await r.json();
+    const badge = document.getElementById('reviewQueueBadge');
+    if (badge) {
+      if (data.pending_count > 0) {
+        badge.textContent = data.pending_count;
+        badge.style.display = 'inline-flex';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+  } catch (e) { /* silent */ }
+}
+
+// Poll badge every 30 seconds
+setInterval(pollReviewBadge, 30000);
+
+
+// ══════════════════════════════════════════════════════════════════════
+// ── Phase 5A: Schedule Automation ─────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
+
+let schedulePreset = 'daily_8am';
+
+async function loadScheduleConfig() {
+  const tierGate = document.getElementById('scheduleTierGate');
+  const config = document.getElementById('scheduleConfig');
+  if (!tierGate || !config) return;
+
+  try {
+    const r = await apiFetch('/schedule');
+    if (!r.ok) {
+      toast('Could not load schedule', 'error');
+      return;
+    }
+
+    const data = await r.json();
+
+    if (!data.cron_allowed) {
+      tierGate.style.display = 'block';
+      config.style.display = 'none';
+      return;
+    }
+
+    tierGate.style.display = 'none';
+    config.style.display = 'block';
+
+    // Set preset buttons
+    schedulePreset = data.schedule_preset || 'daily_8am';
+    document.querySelectorAll('.schedule-preset-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.preset === schedulePreset);
+    });
+
+    // Set toggle
+    const toggle = document.getElementById('scheduleActiveToggle');
+    if (toggle) toggle.checked = data.is_active;
+
+    // Set stats
+    const totalRuns = document.getElementById('schedTotalRuns');
+    const lastRun = document.getElementById('schedLastRun');
+    const lastStatus = document.getElementById('schedLastStatus');
+
+    if (totalRuns) totalRuns.textContent = data.total_runs || 0;
+    if (lastRun) lastRun.textContent = data.last_run_at ? formatTimeAgo(new Date(data.last_run_at)) : '—';
+    if (lastStatus) {
+      const s = data.last_run_status;
+      lastStatus.textContent = s ? s.replace('_', ' ').toUpperCase() : '—';
+      lastStatus.style.color = s === 'error' ? 'var(--danger)' : s === 'pending_review' ? 'var(--warning, #f59e0b)' : 'var(--success)';
+    }
+  } catch (e) {
+    toast('Failed to load schedule config', 'error');
+  }
+}
+
+function selectSchedulePreset(preset, btnEl) {
+  schedulePreset = preset;
+  document.querySelectorAll('.schedule-preset-btn').forEach(btn => btn.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+}
+
+function toggleScheduleActive() {
+  // Immediate save on toggle
+  saveSchedule();
+}
+
+async function saveSchedule() {
+  const toggle = document.getElementById('scheduleActiveToggle');
+  const isActive = toggle ? toggle.checked : false;
+
+  try {
+    const r = await apiFetch('/schedule', {
+      method: 'PUT',
+      body: JSON.stringify({
+        schedule_preset: schedulePreset,
+        is_active: isActive,
+      }),
+    });
+
+    if (r.ok) {
+      toast(isActive ? 'Schedule activated!' : 'Schedule saved', 'success');
+    } else {
+      const err = await r.json().catch(() => ({}));
+      if (err.detail?.error === 'tier_restricted') {
+        toast('Scheduled automation requires the Max plan.', 'error');
+        if (toggle) toggle.checked = false;
+      } else {
+        toast(err.detail?.message || 'Failed to save schedule', 'error');
+      }
+    }
+  } catch (e) {
+    toast(`Error: ${e.message}`, 'error');
+  }
+}
+
+
+// ── Boot: Also poll review badge on startup ───────────────────────────
+setTimeout(pollReviewBadge, 2000);
+
+
+// ══════════════════════════════════════════════════════════════════════
+// ── Autonomous Campaigns ──────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
+
+let campaignEditId = null;          // null = create, int = edit
+let campaignCronExpr = '0 8 * * *'; // default schedule
+let campaignsList = [];             // cached list for card re-rendering
+
+// ── Load & Render ─────────────────────────────────────────────────────
+async function loadCampaigns() {
+  const tierGate    = document.getElementById('campaignTierGate');
+  const statsRow    = document.getElementById('campaignStatsRow');
+  const listEl      = document.getElementById('campaignList');
+  const emptyEl     = document.getElementById('campaignEmptyState');
+  const createBtn   = document.getElementById('campaignCreateBtn');
+  if (!listEl) return;
+
+  // Tier gate: only Max users see campaigns
+  const tier = (currentUser?.plan || currentUser?.tier_level || 'free').toLowerCase();
+  if (tier !== 'max') {
+    tierGate.style.display = 'block';
+    statsRow.style.display = 'none';
+    listEl.style.display   = 'none';
+    emptyEl.style.display  = 'none';
+    if (createBtn) createBtn.style.display = 'none';
+    return;
+  }
+
+  tierGate.style.display = 'none';
+  if (createBtn) createBtn.style.display = '';
+
+  listEl.innerHTML = '<div class="skeleton" style="height:120px; margin:8px 0;"></div>'.repeat(2);
+  listEl.style.display = 'block';
+  emptyEl.style.display = 'none';
+
+  try {
+    const r = await apiFetch('/campaigns');
+    if (!r.ok) {
+      listEl.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">Could not load campaigns.</div>';
+      return;
+    }
+
+    campaignsList = await r.json();
+
+    // Stats aggregation
+    let activeCt = 0, totalRuns = 0, totalPublished = 0, totalCredits = 0;
+    campaignsList.forEach(c => {
+      if (c.is_active) activeCt++;
+      totalRuns      += c.total_runs || 0;
+      totalPublished += c.total_posts_published || 0;
+      totalCredits   += c.total_credits_consumed || 0;
+    });
+
+    statsRow.style.display = '';
+    document.getElementById('cmpStatActive').textContent     = activeCt;
+    document.getElementById('cmpStatTotalRuns').textContent   = totalRuns;
+    document.getElementById('cmpStatPublished').textContent   = totalPublished;
+    document.getElementById('cmpStatCredits').textContent     = totalCredits;
+
+    if (!campaignsList.length) {
+      listEl.style.display = 'none';
+      emptyEl.style.display = 'block';
+      return;
+    }
+
+    listEl.innerHTML = campaignsList.map(renderCampaignCard).join('');
+    emptyEl.style.display = 'none';
+
+  } catch (e) {
+    listEl.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">Failed to load campaigns.</div>';
+  }
+}
+
+function renderCampaignCard(c) {
+  // Status badge class
+  let statusClass = 'active';
+  let statusLabel = 'ACTIVE';
+  if (c.status === 'paused') { statusClass = 'paused';  statusLabel = 'PAUSED'; }
+  if (c.status === 'error_paused') { statusClass = 'error'; statusLabel = 'ERROR PAUSED'; }
+  if (c.status === 'archived') { statusClass = 'archived'; statusLabel = 'ARCHIVED'; }
+
+  // Icon class
+  let iconClass = '';
+  if (statusClass === 'paused') iconClass = 'paused';
+  if (statusClass === 'error') iconClass = 'error';
+
+  // Platform pills
+  const platforms = (c.target_platforms || []).map(p =>
+    `<span class="cmp-card-platform-pill">${esc(p)}</span>`
+  ).join('');
+
+  // Format schedule
+  const scheduleDisplay = formatCronDisplay(c.cron_expression);
+
+  // Last run
+  const lastRunText = c.last_run_at ? formatTimeAgo(new Date(c.last_run_at)) : 'Never';
+
+  // Auto-publish badge
+  const autoPub = c.auto_publish
+    ? '<span style="color:var(--accent); font-size:9px;">AUTO-PUBLISH</span>'
+    : '<span style="color:var(--text-dim); font-size:9px;">REVIEW QUEUE</span>';
+
+  // Action buttons
+  let actions = '';
+  if (c.status === 'active') {
+    actions = `
+      <button class="cmp-action-btn" onclick="openCampaignRuns(${c.id}, '${esc(c.name)}')">Runs (${c.total_runs || 0})</button>
+      <button class="cmp-action-btn" onclick="editCampaign(${c.id})">Edit</button>
+      <button class="cmp-action-btn" onclick="pauseCampaign(${c.id})">Pause</button>
+      <button class="cmp-action-btn danger" onclick="deleteCampaign(${c.id}, '${esc(c.name)}')">Delete</button>`;
+  } else if (c.status === 'paused' || c.status === 'error_paused') {
+    actions = `
+      <button class="cmp-action-btn" onclick="openCampaignRuns(${c.id}, '${esc(c.name)}')">Runs (${c.total_runs || 0})</button>
+      <button class="cmp-action-btn" onclick="resumeCampaign(${c.id})">Resume</button>
+      <button class="cmp-action-btn danger" onclick="deleteCampaign(${c.id}, '${esc(c.name)}')">Delete</button>`;
+  }
+
+  return `
+  <div class="cmp-card">
+    <div class="cmp-card-icon ${iconClass}">&#9673;</div>
+    <div class="cmp-card-body">
+      <div class="cmp-card-header">
+        <span class="cmp-card-name">${esc(c.name)}</span>
+        <span class="cmp-status-badge ${statusClass}">
+          <span class="cmp-status-dot"></span> ${statusLabel}
+        </span>
+        ${autoPub}
+      </div>
+      <div class="cmp-card-meta">
+        <span>Niche: ${esc(c.niche)}</span>
+        <span>|</span>
+        <span>${scheduleDisplay}</span>
+        <span>|</span>
+        <span>Last run: ${lastRunText}</span>
+        <span>|</span>
+        <span>Runs today: ${c.runs_today || 0}/${c.max_runs_per_day}</span>
+      </div>
+      <div class="cmp-card-platforms">${platforms}</div>
+      <div class="cmp-card-actions">${actions}</div>
+    </div>
+  </div>`;
+}
+
+function formatCronDisplay(cron) {
+  if (!cron) return 'No schedule';
+  const cronMap = {
+    '0 8 * * *':   'Daily at 8:00 AM',
+    '0 12 * * *':  'Daily at 12:00 PM',
+    '0 18 * * *':  'Daily at 6:00 PM',
+    '0 9 * * 1-5': 'Weekdays at 9:00 AM',
+  };
+  return cronMap[cron] || cron;
+}
+
+// ── Campaign Modal ────────────────────────────────────────────────────
+function openCampaignModal(editData) {
+  campaignEditId = editData ? editData.id : null;
+  const overlay = document.getElementById('campaignModalOverlay');
+  if (!overlay) return;
+
+  document.getElementById('campaignModalTitle').textContent = editData ? 'Edit Campaign' : 'New Campaign';
+  document.getElementById('cmpSaveBtn').textContent = editData ? 'Update Campaign' : 'Create Campaign';
+
+  // Populate or clear fields
+  document.getElementById('cmpName').value = editData ? editData.name : '';
+  document.getElementById('cmpNiche').value = editData ? editData.niche : '';
+  document.getElementById('cmpInstructions').value = editData ? (editData.topic_instructions || '') : '';
+  document.getElementById('cmpMaxRuns').value = editData ? String(editData.max_runs_per_day || 3) : '3';
+  document.getElementById('cmpAutoPublish').checked = editData ? editData.auto_publish : false;
+
+  // Schedule preset
+  campaignCronExpr = editData ? (editData.cron_expression || '0 8 * * *') : '0 8 * * *';
+  document.querySelectorAll('[data-cmp-preset]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.cmpPreset === campaignCronExpr);
+  });
+
+  // Render platform toggles
+  renderCampaignPlatformToggles(editData ? editData.target_platforms : []);
+
+  overlay.classList.add('open');
+}
+
+function closeCampaignModal() {
+  const overlay = document.getElementById('campaignModalOverlay');
+  if (overlay) overlay.classList.remove('open');
+  campaignEditId = null;
+}
+
+function selectCampaignPreset(cron, btnEl) {
+  campaignCronExpr = cron;
+  document.querySelectorAll('[data-cmp-preset]').forEach(b => b.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+}
+
+function renderCampaignPlatformToggles(selectedPlatforms) {
+  const container = document.getElementById('cmpPlatformToggles');
+  if (!container) return;
+
+  const connected = connectedPlatforms || [];
+  selectedPlatforms = selectedPlatforms || [];
+
+  container.innerHTML = PLATFORMS.map(p => {
+    const isConnected = connected.includes(p.id);
+    const isSelected  = selectedPlatforms.map(s => s.toLowerCase()).includes(p.id);
+    const disabledCls = isConnected ? '' : 'disabled';
+    const selectedCls = isSelected  ? 'selected' : '';
+
+    return `<span class="cmp-platform-chip ${disabledCls} ${selectedCls}" data-platform="${p.id}" title="${isConnected ? '' : 'Connect ' + p.name + ' first'}">${p.emoji} ${p.name}</span>`;
+  }).join('');
+
+  container.querySelectorAll('.cmp-platform-chip').forEach(el => {
+    el.addEventListener('click', () => {
+      if (el.classList.contains('disabled')) {
+        toast('Connect this platform in the Connections tab first', 'warning');
+        return;
+      }
+      el.classList.toggle('selected');
+    });
+  });
+}
+
+function getSelectedCampaignPlatforms() {
+  return [...document.querySelectorAll('.cmp-platform-chip.selected')].map(e => e.dataset.platform);
+}
+
+// ── CRUD Operations ───────────────────────────────────────────────────
+async function saveCampaign() {
+  const name    = document.getElementById('cmpName')?.value.trim();
+  const niche   = document.getElementById('cmpNiche')?.value.trim();
+  const instr   = document.getElementById('cmpInstructions')?.value.trim();
+  const maxRuns = parseInt(document.getElementById('cmpMaxRuns')?.value || '3', 10);
+  const autoPub = document.getElementById('cmpAutoPublish')?.checked || false;
+  const platforms = getSelectedCampaignPlatforms();
+
+  if (!name) { toast('Campaign name is required', 'error'); return; }
+  if (!niche) { toast('Niche / topic is required', 'error'); return; }
+  if (!platforms.length) { toast('Select at least one target platform', 'error'); return; }
+
+  const btn = document.getElementById('cmpSaveBtn');
+  btn.disabled = true;
+  btn.textContent = campaignEditId ? 'Updating...' : 'Creating...';
+
+  const body = {
+    name,
+    niche,
+    topic_instructions: instr || null,
+    cron_expression: campaignCronExpr,
+    max_runs_per_day: maxRuns,
+    auto_publish: autoPub,
+    target_platforms: platforms,
+  };
+
+  try {
+    let r;
+    if (campaignEditId) {
+      r = await apiFetch(`/campaigns/${campaignEditId}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      });
+    } else {
+      r = await apiFetch('/campaigns', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    }
+
+    if (r.ok) {
+      toast(campaignEditId ? 'Campaign updated!' : 'Campaign created!', 'success');
+      closeCampaignModal();
+      loadCampaigns();
+    } else {
+      const err = await r.json().catch(() => ({}));
+      toast(err.detail || 'Failed to save campaign', 'error');
+    }
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = campaignEditId ? 'Update Campaign' : 'Create Campaign';
+  }
+}
+
+async function editCampaign(id) {
+  try {
+    const r = await apiFetch(`/campaigns/${id}`);
+    if (!r.ok) { toast('Could not load campaign', 'error'); return; }
+    const data = await r.json();
+    openCampaignModal(data.campaign);
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function deleteCampaign(id, name) {
+  if (!confirm(`Delete campaign "${name}"? This will remove all run history and cannot be undone.`)) return;
+
+  try {
+    const r = await apiFetch(`/campaigns/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+      toast('Campaign deleted', 'success');
+      loadCampaigns();
+    } else {
+      const err = await r.json().catch(() => ({}));
+      toast(err.detail || 'Failed to delete', 'error');
+    }
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function pauseCampaign(id) {
+  try {
+    const r = await apiFetch(`/campaigns/${id}/pause`, { method: 'POST' });
+    if (r.ok) {
+      toast('Campaign paused', 'success');
+      loadCampaigns();
+    } else {
+      const err = await r.json().catch(() => ({}));
+      toast(err.detail || 'Failed to pause', 'error');
+    }
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function resumeCampaign(id) {
+  try {
+    const r = await apiFetch(`/campaigns/${id}/resume`, { method: 'POST' });
+    if (r.ok) {
+      toast('Campaign resumed', 'success');
+      loadCampaigns();
+    } else {
+      const err = await r.json().catch(() => ({}));
+      toast(err.detail || 'Failed to resume', 'error');
+    }
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// ── Run History Modal ─────────────────────────────────────────────────
+async function openCampaignRuns(campaignId, campaignName) {
+  const overlay = document.getElementById('campaignRunsOverlay');
+  const title   = document.getElementById('campaignRunsTitle');
+  const listEl  = document.getElementById('campaignRunsList');
+  if (!overlay || !listEl) return;
+
+  title.textContent = `Run History: ${campaignName}`;
+  listEl.innerHTML = '<div class="skeleton" style="height:80px; margin:8px 0;"></div>'.repeat(3);
+  overlay.classList.add('open');
+
+  try {
+    const r = await apiFetch(`/campaigns/${campaignId}/runs?limit=50`);
+    if (!r.ok) {
+      listEl.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">Could not load run history.</div>';
+      return;
+    }
+
+    const data = await r.json();
+    const runs = data.runs || data;
+
+    if (!runs.length) {
+      listEl.innerHTML = `
+        <div style="text-align:center; padding:48px 24px; color:var(--text-muted);">
+          <div style="font-size:32px; margin-bottom:12px;">&#9673;</div>
+          <div style="font-size:14px;">No runs yet for this campaign</div>
+        </div>`;
+      return;
+    }
+
+    listEl.innerHTML = runs.map(renderRunItem).join('');
+  } catch (e) {
+    listEl.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">Failed to load runs.</div>';
+  }
+}
+
+function closeCampaignRunsModal() {
+  const overlay = document.getElementById('campaignRunsOverlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+function renderRunItem(run) {
+  const statusClass = (run.status || 'running').toLowerCase();
+  const duration    = run.duration_seconds ? `${run.duration_seconds.toFixed(1)}s` : '--';
+  const startedAt   = run.started_at ? new Date(run.started_at).toLocaleString() : '--';
+  const credits     = run.credits_consumed || 0;
+
+  // Published platforms
+  let publishedInfo = '';
+  if (run.auto_published && run.platform_results) {
+    const successes = run.platform_results.filter(r => r.success).map(r => r.platform);
+    if (successes.length) {
+      publishedInfo = `<span style="color:var(--accent);">Published to: ${successes.join(', ')}</span>`;
+    }
+  }
+
+  // Error
+  let errorInfo = '';
+  if (run.error_message) {
+    errorInfo = `<div style="font-size:11px; color:var(--danger); margin-top:4px;">${esc(run.error_message)}</div>`;
+  }
+
+  return `
+  <div class="cmp-run-item">
+    <div class="cmp-run-status-dot ${statusClass}"></div>
+    <div class="cmp-run-body">
+      <div class="cmp-run-title">${esc(run.article_title || 'Run ' + (run.run_id || ''))}</div>
+      <div class="cmp-run-meta">
+        <span>${startedAt}</span>
+        <span>|</span>
+        <span>${duration}</span>
+        <span>|</span>
+        <span>${credits} credits</span>
+        ${run.pipeline_node ? `<span>|</span><span class="cmp-run-node-badge">${esc(run.pipeline_node)}</span>` : ''}
+        ${run.video_model_used ? `<span>|</span><span>${esc(run.video_model_used)}</span>` : ''}
+      </div>
+      ${publishedInfo}
+      ${errorInfo}
+    </div>
+  </div>`;
+}

@@ -15,7 +15,7 @@ from app.models.content import (  # noqa: F401
     StoryContent,
     AssetLibrary,
 )
-from app.models.campaign import VideoCampaign, VideoJob  # noqa: F401
+from app.models.campaign import VideoCampaign, VideoJob, AgentCampaign, AgentCampaignRun  # noqa: F401
 from app.models.analytics import (  # noqa: F401
     PostAnalytics,
     UserAnalyticsSummary,
@@ -23,3 +23,5 @@ from app.models.analytics import (  # noqa: F401
 )
 from app.models.content_source import ContentItem, ApprovalQueue  # noqa: F401
 from app.models.credit import CreditTransaction  # noqa: F401
+from app.models.schedule import ScheduledJob  # noqa: F401
+
