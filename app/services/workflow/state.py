@@ -37,3 +37,7 @@ class WorkflowState(TypedDict):
     video_script: Optional[Dict[str, Any]]
     credits_consumed: int
     status: str
+    workflow_run_id: Optional[int]
+    run_key: Optional[str]
+    workflow_policy: Optional[Dict[str, Any]]
+    source_strategy: Optional[str]

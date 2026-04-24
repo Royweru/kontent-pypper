@@ -10,19 +10,21 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
-from app.services.workflow.langgraph_pipeline import langgraph_pipeline
+from app.models.workflow import WorkflowRun, RunEvent, QualityEvaluation
+from app.services.workflow.orchestrator import WorkflowOrchestrator
+from app.services.workflow.policy import build_workflow_policy
 from app.services.credit_service import (
     check_workflow_run_allowed,
     increment_daily_runs,
     check_video_credits,
     consume_credits,
     get_video_model_for_tier,
-    get_tier_config,
     DailyRunLimitError,
     InsufficientCreditsError,
 )
@@ -30,6 +32,109 @@ from app.services.credit_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _serialize_run_summary(run: WorkflowRun, quality_summary: dict | None = None) -> dict:
+    return {
+        "run_key": run.run_key,
+        "status": run.status,
+        "pipeline_node": run.pipeline_node,
+        "trigger_type": run.trigger_type,
+        "trigger_ref": run.trigger_ref,
+        "plan_tier": run.plan_tier,
+        "video_model": run.video_model,
+        "duration_seconds": run.duration_seconds,
+        "error_message": run.error_message,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        "quality_summary": quality_summary or {},
+    }
+
+
+@router.get("/runs")
+async def list_workflow_runs(
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    limit = max(1, min(limit, 100))
+    runs = (await db.execute(
+        select(WorkflowRun)
+        .where(WorkflowRun.user_id == current_user.id)
+        .order_by(desc(WorkflowRun.created_at))
+        .limit(limit)
+    )).scalars().all()
+
+    items = []
+    for run in runs:
+        quality_summary = {}
+        if isinstance(run.final_state, dict):
+            quality_summary = run.final_state.get("quality_summary") or {}
+        items.append(_serialize_run_summary(run, quality_summary=quality_summary))
+
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/runs/{run_key}")
+async def get_workflow_run(
+    run_key: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    run = (await db.execute(
+        select(WorkflowRun).where(
+            WorkflowRun.run_key == run_key,
+            WorkflowRun.user_id == current_user.id,
+        )
+    )).scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found.")
+
+    events = (await db.execute(
+        select(RunEvent)
+        .where(RunEvent.run_id == run.id)
+        .order_by(RunEvent.created_at.asc())
+    )).scalars().all()
+
+    evaluations = (await db.execute(
+        select(QualityEvaluation)
+        .where(QualityEvaluation.run_id == run.id)
+        .order_by(QualityEvaluation.created_at.asc())
+    )).scalars().all()
+
+    quality_summary = {}
+    if isinstance(run.final_state, dict):
+        quality_summary = run.final_state.get("quality_summary") or {}
+
+    return {
+        "run": _serialize_run_summary(run, quality_summary=quality_summary),
+        "events": [
+            {
+                "event_type": event.event_type,
+                "node": event.node,
+                "payload": event.payload,
+                "created_at": event.created_at.isoformat() if event.created_at else None,
+            }
+            for event in events
+        ],
+        "quality_evaluations": [
+            {
+                "criterion": evaluation.criterion,
+                "score": evaluation.score,
+                "passed": evaluation.passed,
+                "notes": evaluation.notes,
+                "metadata_json": evaluation.metadata_json,
+                "created_at": (
+                    evaluation.created_at.isoformat()
+                    if evaluation.created_at else None
+                ),
+            }
+            for evaluation in evaluations
+        ],
+        "initial_state": run.initial_state,
+        "final_state": run.final_state,
+    }
 
 
 @router.post("/run")
@@ -66,6 +171,8 @@ async def run_workflow(
     # ── Step 2: Determine video model for this tier ──────────────────
     tier = current_user.tier_level or "free"
     video_model = get_video_model_for_tier(tier)
+    workflow_policy = build_workflow_policy(tier_level=tier)
+    stream_delay_seconds = float(workflow_policy.get("event_delay_seconds", 0.5))
 
     # ── Step 3: Pre-check credit availability (skip for stock) ───────
     if video_model != "stock":
@@ -97,25 +204,38 @@ async def run_workflow(
             "video_source": None,
             "video_script": None,
             "credits_consumed": 0,
+            "workflow_policy": workflow_policy,
             "status": "Starting pipeline...",
         }
 
+        run = await WorkflowOrchestrator.create_run(
+            db=db,
+            user_id=current_user.id,
+            trigger_type="manual",
+            trigger_ref="api_workflow_run",
+            plan_tier=tier,
+            video_model=video_model,
+            initial_state=initial_state,
+        )
+
+        initial_state["run_key"] = run.run_key
         yield f"data: {json.dumps(initial_state)}\n\n"
 
         final_state = initial_state.copy()
 
-        # Stream nodes one-by-one
-        try:
-            async for state_update in langgraph_pipeline.astream(initial_state):
-                for node_name, updated_state in state_update.items():
-                    logger.info("[Workflow] user_id=%d finished node: %s", current_user.id, node_name)
-                    final_state.update(updated_state)
-                    yield f"data: {json.dumps(updated_state)}\n\n"
-                    await asyncio.sleep(0.5)  # Small delay for UX visual feel
-        except Exception as exc:
-            logger.error("[Workflow] Pipeline error for user_id=%d: %s", current_user.id, exc)
-            yield f"data: {json.dumps({'status': 'ERROR', 'error': str(exc)})}\n\n"
-            return
+        # Stream nodes one-by-one through canonical orchestrator lifecycle
+        async for updated_state in WorkflowOrchestrator.stream(
+            db=db,
+            run=run,
+            initial_state=initial_state,
+        ):
+            if updated_state.get("status") == "ERROR":
+                yield f"data: {json.dumps(updated_state)}\n\n"
+                return
+
+            final_state.update(updated_state)
+            yield f"data: {json.dumps(updated_state)}\n\n"
+            await asyncio.sleep(stream_delay_seconds)
 
         # ── Step 5: Post-pipeline credit consumption ─────────────────
         credits_used = final_state.get("credits_consumed", 0)
@@ -137,13 +257,37 @@ async def run_workflow(
             except Exception as exc:
                 logger.error("[Workflow] Failed to consume credits for user_id=%d: %s", current_user.id, exc)
 
+        try:
+            await WorkflowOrchestrator.log_event(
+                db=db,
+                run_id=run.id,
+                event_type="cost_summary",
+                node=final_state.get("status"),
+                payload={
+                    "trigger_type": "manual",
+                    "plan_tier": tier,
+                    "video_model_requested": initial_state.get("video_model"),
+                    "video_model_used": final_state.get("video_source", video_model),
+                    "credits_consumed": credits_used,
+                    "billing_unit": "credits",
+                    "duration_seconds": run.duration_seconds,
+                    "quality_summary": final_state.get("quality_summary"),
+                },
+            )
+        except Exception as exc:
+            logger.warning("[Workflow] Failed to emit cost_summary for run_key=%s: %s", run.run_key, exc)
+
         # Send final done signal with credit info
         done_payload = {
             "status": "DONE",
+            "run_key": run.run_key,
             "credits_consumed": credits_used,
             "credits_remaining": (current_user.video_credits_remaining or 0) - credits_used,
             "tier": tier,
             "video_model": video_model,
+            "review_required": workflow_policy.get("require_review", False),
+            "quality_summary": final_state.get("quality_summary") or {},
+            "quality_passed": bool(final_state.get("quality_passed", True)),
         }
         yield f"data: {json.dumps(done_payload)}\n\n"
 

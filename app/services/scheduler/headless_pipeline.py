@@ -6,7 +6,6 @@ Used by the cron scheduler for background autonomous runs.
 """
 
 import logging
-import uuid
 from datetime import datetime
 
 from sqlalchemy import select
@@ -15,7 +14,8 @@ from app.core.database import AsyncSessionLocal
 from app.models.user import User
 from app.models.content import AssetLibrary
 from app.models.schedule import ScheduledJob
-from app.services.workflow.langgraph_pipeline import langgraph_pipeline
+from app.services.workflow.orchestrator import WorkflowOrchestrator
+from app.services.workflow.policy import build_workflow_policy
 from app.services.credit_service import (
     check_workflow_run_allowed,
     increment_daily_runs,
@@ -40,8 +40,7 @@ async def run_headless_pipeline(user_id: int):
       3. Store results in AssetLibrary with status=pending_review
       4. Update the ScheduledJob tracking fields
     """
-    run_id = str(uuid.uuid4())[:8]
-    logger.info("[HeadlessPipeline] Starting run_id=%s for user_id=%d", run_id, user_id)
+    logger.info("[HeadlessPipeline] Starting run for user_id=%d", user_id)
 
     async with AsyncSessionLocal() as db:
         # ── Load user ─────────────────────────────────────────────────
@@ -53,6 +52,7 @@ async def run_headless_pipeline(user_id: int):
             return
 
         tier = user.tier_level or "free"
+        workflow_policy = build_workflow_policy(tier_level=tier)
 
         # ── Check daily run limit ─────────────────────────────────────
         try:
@@ -88,18 +88,50 @@ async def run_headless_pipeline(user_id: int):
             "video_source": None,
             "video_script": None,
             "credits_consumed": 0,
+            "workflow_policy": workflow_policy,
             "status": "Starting headless pipeline...",
         }
 
-        final_state = initial_state.copy()
+        workflow_run = await WorkflowOrchestrator.create_run(
+            db=db,
+            user_id=user_id,
+            trigger_type="user_schedule",
+            trigger_ref=f"user_cron_{user_id}",
+            plan_tier=tier,
+            video_model=video_model,
+            initial_state=initial_state,
+        )
+        run_id = workflow_run.run_key[:8]
 
-        try:
-            async for state_update in langgraph_pipeline.astream(initial_state):
-                for node_name, updated_state in state_update.items():
-                    logger.info("[HeadlessPipeline] run_id=%s finished node: %s", run_id, node_name)
-                    final_state.update(updated_state)
-        except Exception as exc:
-            logger.error("[HeadlessPipeline] Pipeline error run_id=%s: %s", run_id, exc, exc_info=True)
+        final_state, pipeline_error = await WorkflowOrchestrator.execute(
+            db=db,
+            run=workflow_run,
+            initial_state=initial_state,
+        )
+        if pipeline_error:
+            logger.error("[HeadlessPipeline] Pipeline error run_key=%s: %s", workflow_run.run_key, pipeline_error)
+            try:
+                await WorkflowOrchestrator.log_event(
+                    db=db,
+                    run_id=workflow_run.id,
+                    event_type="cost_summary",
+                    node="error",
+                    payload={
+                        "trigger_type": "user_schedule",
+                        "plan_tier": tier,
+                        "video_model_requested": initial_state.get("video_model"),
+                        "video_model_used": final_state.get("video_source", video_model),
+                        "credits_consumed": final_state.get("credits_consumed", 0),
+                        "billing_unit": "credits",
+                        "duration_seconds": workflow_run.duration_seconds,
+                        "error": str(pipeline_error),
+                    },
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[HeadlessPipeline] Failed to emit cost_summary for run_key=%s: %s",
+                    workflow_run.run_key, exc,
+                )
             await _update_job_status(db, user_id, "error")
             return
 
@@ -116,10 +148,33 @@ async def run_headless_pipeline(user_id: int):
                         credits=credits_used,
                         action_type="workflow_run",
                         model_used=final_state.get("video_source", video_model),
-                        description=f"Headless cron run: {run_id}",
+                        description=f"Headless cron run: {workflow_run.run_key}",
                     )
             except Exception as exc:
                 logger.error("[HeadlessPipeline] Credit consumption failed: %s", exc)
+
+        try:
+            await WorkflowOrchestrator.log_event(
+                db=db,
+                run_id=workflow_run.id,
+                event_type="cost_summary",
+                node="completed",
+                payload={
+                    "trigger_type": "user_schedule",
+                    "plan_tier": tier,
+                    "video_model_requested": initial_state.get("video_model"),
+                    "video_model_used": final_state.get("video_source", video_model),
+                    "credits_consumed": credits_used,
+                    "billing_unit": "credits",
+                    "duration_seconds": workflow_run.duration_seconds,
+                    "quality_summary": final_state.get("quality_summary"),
+                },
+            )
+        except Exception as exc:
+            logger.warning(
+                "[HeadlessPipeline] Failed to emit cost_summary for run_key=%s: %s",
+                workflow_run.run_key, exc,
+            )
 
         # ── Store in AssetLibrary as pending_review ────────────────────
         article = final_state.get("selected_article") or {}
@@ -140,7 +195,7 @@ async def run_headless_pipeline(user_id: int):
             source_article_url=article.get("url"),
             video_model_used=final_state.get("video_source", video_model),
             credits_consumed=credits_used,
-            workflow_run_id=run_id,
+            workflow_run_id=workflow_run.run_key,
             platforms_used=list(scripts.keys()) if scripts else [],
         )
         db.add(asset)

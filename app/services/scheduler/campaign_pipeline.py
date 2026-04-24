@@ -8,7 +8,6 @@ Called by APScheduler cron job: run_campaign_pipeline(campaign_id)
 
 import logging
 import uuid
-import traceback
 from datetime import datetime
 
 from sqlalchemy import select
@@ -17,7 +16,8 @@ from app.core.database import AsyncSessionLocal
 from app.models.user import User
 from app.models.content import AssetLibrary
 from app.models.campaign import AgentCampaign, AgentCampaignRun
-from app.services.workflow.langgraph_pipeline import langgraph_pipeline
+from app.services.workflow.orchestrator import WorkflowOrchestrator
+from app.services.workflow.policy import build_workflow_policy
 from app.services.credit_service import (
     check_workflow_run_allowed,
     increment_daily_runs,
@@ -88,6 +88,10 @@ async def run_campaign_pipeline(campaign_id: int):
             return
 
         tier = user.tier_level or "free"
+        workflow_policy = build_workflow_policy(
+            tier_level=tier,
+            target_platforms=campaign.target_platforms or [],
+        )
 
         # ── 2. Rate limit check ───────────────────────────────────────
         # Reset daily counter if needed
@@ -163,29 +167,61 @@ async def run_campaign_pipeline(campaign_id: int):
             "status": f"Campaign pipeline [{campaign.name}]...",
             # Campaign-specific context for agent
             "topic_instructions": campaign.topic_instructions or "",
-            "target_platforms": campaign.target_platforms or [],
+            "target_platforms": workflow_policy.get("target_platforms", []),
+            "workflow_policy": workflow_policy,
         }
 
-        final_state = initial_state.copy()
+        workflow_run = await WorkflowOrchestrator.create_run(
+            db=db,
+            user_id=campaign.user_id,
+            trigger_type="campaign",
+            trigger_ref=str(campaign_id),
+            plan_tier=tier,
+            video_model=video_model,
+            initial_state=initial_state,
+        )
 
-        try:
-            async for state_update in langgraph_pipeline.astream(initial_state):
-                for node_name, updated_state in state_update.items():
-                    logger.info(
-                        "[CampaignPipeline] run_id=%s finished node: %s",
-                        run_uuid, node_name,
-                    )
-                    run.pipeline_node = node_name
-                    final_state.update(updated_state)
-                    await db.commit()
+        async def _on_node(node_name: str, updated_state: dict):
+            logger.info("[CampaignPipeline] run_id=%s finished node: %s", run_uuid, node_name)
+            run.pipeline_node = node_name
+            await db.commit()
 
-        except Exception as exc:
+        final_state, pipeline_error = await WorkflowOrchestrator.execute(
+            db=db,
+            run=workflow_run,
+            initial_state=initial_state,
+            on_node=_on_node,
+        )
+
+        if pipeline_error:
             logger.error(
                 "[CampaignPipeline] Pipeline error run_id=%s: %s",
-                run_uuid, exc, exc_info=True,
+                run_uuid, pipeline_error, exc_info=True,
             )
+            try:
+                await WorkflowOrchestrator.log_event(
+                    db=db,
+                    run_id=workflow_run.id,
+                    event_type="cost_summary",
+                    node="error",
+                    payload={
+                        "trigger_type": "campaign",
+                        "plan_tier": tier,
+                        "video_model_requested": initial_state.get("video_model"),
+                        "video_model_used": final_state.get("video_source", video_model),
+                        "credits_consumed": final_state.get("credits_consumed", 0),
+                        "billing_unit": "credits",
+                        "duration_seconds": workflow_run.duration_seconds,
+                        "error": str(pipeline_error),
+                    },
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[CampaignPipeline] Failed to emit error cost_summary run_id=%s: %s",
+                    run_uuid, exc,
+                )
             await _finalize_run_error(
-                db, campaign, run, str(exc), traceback.format_exc(),
+                db, campaign, run, str(pipeline_error), "",
             )
             return
 
@@ -211,15 +247,49 @@ async def run_campaign_pipeline(campaign_id: int):
                     "[CampaignPipeline] Credit consumption failed: %s", exc
                 )
 
+        try:
+            await WorkflowOrchestrator.log_event(
+                db=db,
+                run_id=workflow_run.id,
+                event_type="cost_summary",
+                node="completed",
+                payload={
+                    "trigger_type": "campaign",
+                    "plan_tier": tier,
+                    "video_model_requested": initial_state.get("video_model"),
+                    "video_model_used": final_state.get("video_source", video_model),
+                    "credits_consumed": credits_used,
+                    "billing_unit": "credits",
+                    "duration_seconds": workflow_run.duration_seconds,
+                    "campaign_id": campaign_id,
+                    "auto_publish_requested": campaign.auto_publish,
+                    "quality_summary": final_state.get("quality_summary"),
+                },
+            )
+        except Exception as exc:
+            logger.warning(
+                "[CampaignPipeline] Failed to emit cost_summary run_id=%s: %s",
+                run_uuid, exc,
+            )
+
         # ── 7. Extract generated content ──────────────────────────────
         article = final_state.get("selected_article") or {}
         scripts = final_state.get("scripts", {})
         video_url = final_state.get("video_asset")
         video_script = final_state.get("video_script")
+        quality_summary = final_state.get("quality_summary") or {}
+        quality_score = float(quality_summary.get("score", 0.0))
+        quality_passed = bool(quality_summary.get("passed", False))
+        quality_threshold = float(workflow_policy.get("auto_publish_min_quality", 0.75))
+        quality_allows_auto_publish = quality_passed and quality_score >= quality_threshold
 
         # ── 8. Store in AssetLibrary ──────────────────────────────────
         asset_status = "pending_review"  # Default: HITL review
-        if campaign.auto_publish:
+        if (
+            campaign.auto_publish
+            and workflow_policy.get("auto_publish_allowed", True)
+            and quality_allows_auto_publish
+        ):
             asset_status = "auto_publishing"
 
         asset = AssetLibrary(
@@ -235,7 +305,7 @@ async def run_campaign_pipeline(campaign_id: int):
             source_article_url=article.get("url"),
             video_model_used=final_state.get("video_source", video_model),
             credits_consumed=credits_used,
-            workflow_run_id=run_uuid,
+            workflow_run_id=workflow_run.run_key,
             platforms_used=list(scripts.keys()) if scripts else [],
         )
         db.add(asset)
@@ -246,7 +316,7 @@ async def run_campaign_pipeline(campaign_id: int):
         platform_results = []
         auto_published = False
 
-        if campaign.auto_publish and scripts:
+        if campaign.auto_publish and scripts and quality_allows_auto_publish:
             run.status = "publishing"
             run.pipeline_node = "auto_publish"
             await db.commit()
@@ -303,6 +373,11 @@ async def run_campaign_pipeline(campaign_id: int):
                 })
                 asset.status = "pending_review"
                 await db.commit()
+        elif campaign.auto_publish and scripts and not quality_allows_auto_publish:
+            logger.info(
+                "[CampaignPipeline] run_id=%s held for review by quality gate (score=%.3f threshold=%.3f).",
+                run_uuid, quality_score, quality_threshold,
+            )
 
         # ── 10. Finalize run ──────────────────────────────────────────
         completed_at = datetime.utcnow()
