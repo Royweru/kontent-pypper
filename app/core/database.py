@@ -32,20 +32,9 @@ engine = create_async_engine(
     echo=False,
     pool_pre_ping=True,
     pool_recycle=180,  # Lower - Neon terminates idle connections faster
-    pool_size=5,  # Smaller pool for Neon free tier
-    max_overflow=2,
+    pool_size=20,  # Smaller pool for Neon free tier
+    max_overflow=10,
     pool_timeout=10,
-    connect_args={
-        "ssl": "require",
-        "timeout": 15,
-        "command_timeout": 15,
-        "server_settings": {
-            "application_name": "kontentpyper",
-            "jit": "off",
-            "statement_cache": "off",  # Neon recommends disabling this
-        },
-        "statement_cache_size": 0,  # Disable prepared statements
-    },
 )
 
 AsyncSessionLocal = async_sessionmaker(
