@@ -19,6 +19,7 @@ class UserResponse(BaseModel):
     email: str
     username: str
     is_active: bool
+    is_email_verified: bool = False
     plan: str
     posts_used: int
     posts_limit: int

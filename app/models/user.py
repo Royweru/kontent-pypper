@@ -102,6 +102,12 @@ class User(Base):
     agent_campaigns = relationship(
         "AgentCampaign", back_populates="user", cascade="all, delete-orphan"
     )
+    auth_sessions = relationship(
+        "AuthSession", back_populates="user", cascade="all, delete-orphan"
+    )
+    identities = relationship(
+        "UserIdentity", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Subscription(Base):

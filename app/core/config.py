@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me-to-a-real-secret"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_HOURS: int = 24
+    ACCESS_TOKEN_MINUTES: int = 30
+    REFRESH_TOKEN_DAYS: int = 14
+    AUTH_ACCESS_COOKIE_NAME: str = "kp_access_token"
+    AUTH_REFRESH_COOKIE_NAME: str = "kp_refresh_token"
+    COOKIE_SECURE: bool = False
+    COOKIE_SAMESITE: str = "lax"
+    COOKIE_DOMAIN: str = ""
+    FRONTEND_URL: str = "http://localhost:8000"
 
     # ── AI / LLM Providers ────────────────────────────────────────
     OPENAI_API_KEY: str = ""
@@ -37,6 +45,8 @@ class Settings(BaseSettings):
     # ── Social Platform: YouTube / Google (OAuth 2.0) ─────────────
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_AUTH_REDIRECT_URI: str = ""
+    GOOGLE_AUTH_STATE_COOKIE_NAME: str = "kp_google_auth_state"
 
     # ── Social Platform: TikTok (OAuth 2.0 + PKCE) ───────────────
     TIKTOK_CLIENT_ID: str = ""
@@ -68,12 +78,14 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads/"
 
     # ── Email / SMTP ──────────────────────────────────────────────
-    SMTP_SERVER: str = "smtp.gmail.com"
+    SMTP_SERVER: str ="smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
     FROM_EMAIL: str = "rythmcode13@gmail.com"
-    FROM_NAME: str = "KontentPypper"
+    FROM_NAME: str = "KontentPyper"
+    EMAIL_VERIFICATION_TOKEN_HOURS: int = 24
+    REQUIRE_EMAIL_VERIFICATION: bool = True
 
     # ── Telegram Notifications ────────────────────────────────────
     TELEGRAM_BOT_TOKEN: str = ""

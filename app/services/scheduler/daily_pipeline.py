@@ -17,6 +17,7 @@ This ties Phase 1 (Ingestion), Phase 2 (AI), and Phase 5 (Telegram HITL) togethe
 import logging
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.user import User
 from app.models.social import SocialConnection
@@ -43,6 +44,9 @@ async def run_daily_pipeline(user_id: int):
         user = result.scalar_one_or_none()
         if not user or not user.is_active:
             logger.warning("[DailyPipeline] user_id=%s not found or inactive. Skipping.", user_id)
+            return
+        if settings.REQUIRE_EMAIL_VERIFICATION and not user.is_email_verified:
+            logger.info("[DailyPipeline] user_id=%s email is not verified. Skipping.", user_id)
             return
 
         bot_token = user.telegram_bot_token

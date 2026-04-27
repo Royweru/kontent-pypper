@@ -67,6 +67,7 @@
 
       var loginRes = await fetch('/api/v1/auth/login', {
         method: 'POST',
+        credentials: 'include',
         body: loginBody
       });
 
@@ -78,6 +79,7 @@
       }
 
       var loginData = await loginRes.json();
+      localStorage.setItem('kp_token', loginData.access_token);
       localStorage.setItem('token', loginData.access_token);
 
       showAlert('Account created! Entering dashboard...', 'success');

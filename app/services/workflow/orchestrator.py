@@ -358,7 +358,7 @@ class WorkflowOrchestrator:
     ):
         """
         Streams node updates from LangGraph while persisting canonical lifecycle events.
-        Yields raw node update dictionaries.
+        Yields structured node envelopes.
         """
         initial_state = initial_state.copy()
         initial_state["workflow_run_id"] = run.id
@@ -382,7 +382,11 @@ class WorkflowOrchestrator:
                         node=node_name,
                         payload=updated_state,
                     )
-                    yield updated_state
+                    yield {
+                        "event_type": "node_completed",
+                        "node": node_name,
+                        "state": updated_state,
+                    }
                     elapsed = time.monotonic() - started_monotonic
                     if elapsed > max_runtime_seconds:
                         raise TimeoutError(
@@ -393,4 +397,8 @@ class WorkflowOrchestrator:
         except Exception as exc:
             logger.error("[Orchestrator] run_key=%s stream failed: %s", run.run_key, exc, exc_info=True)
             await WorkflowOrchestrator.mark_failed(db, run, exc, final_state)
-            yield {"status": "ERROR", "error": str(exc)}
+            yield {
+                "event_type": "run_failed",
+                "error": str(exc),
+                "state": final_state,
+            }

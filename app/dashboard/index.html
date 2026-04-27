@@ -41,6 +41,9 @@
       <span class="nav-icon" aria-hidden="true">◆</span> <span class="nav-label">Review Queue</span>
       <span class="nav-badge" id="reviewQueueBadge" style="display:none;">0</span>
     </button>
+    <button class="nav-item" data-page="library" onclick="navigate('library')">
+      <span class="nav-icon" aria-hidden="true">â—«</span> <span class="nav-label">Asset Library</span>
+    </button>
     <button class="nav-item"        data-page="connections"  onclick="navigate('connections')">
       <span class="nav-icon" aria-hidden="true">⌬</span> <span class="nav-label">Connections</span>
     </button>
@@ -113,7 +116,7 @@
         <span>+</span> Compose New Event
       </button>
       <button class="btn-secondary" onclick="openAutomateModal()">
-        <span>⚡</span> Launch 10x Pipeline
+        <span>⚡</span> Produce Shots
       </button>
     </div>
 
@@ -321,7 +324,7 @@
   </section>
 
   <!-- ── Schedule ──────────────────────────────────────────────── -->
-  <section class="page" id="page-schedule" aria-label="Schedule">
+  <section class="page" id="page-schedule-legacy" aria-label="Schedule">
     <div class="coming-soon">
       <span class="icon" aria-hidden="true">◷</span>
       <h2>Post Scheduling</h2>
@@ -425,16 +428,16 @@
         <div>
           <label class="cmp-label">Schedule</label>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <button class="schedule-preset-btn active" data-cmp-preset="0 8 * * *" onclick="selectCampaignPreset('0 8 * * *', this)">
+            <button class="schedule-preset-btn active" data-cmp-preset="daily_8am" onclick="selectCampaignPreset('daily_8am', this)">
               <span>Morning (8 AM)</span>
             </button>
-            <button class="schedule-preset-btn" data-cmp-preset="0 12 * * *" onclick="selectCampaignPreset('0 12 * * *', this)">
+            <button class="schedule-preset-btn" data-cmp-preset="daily_12pm" onclick="selectCampaignPreset('daily_12pm', this)">
               <span>Midday (12 PM)</span>
             </button>
-            <button class="schedule-preset-btn" data-cmp-preset="0 18 * * *" onclick="selectCampaignPreset('0 18 * * *', this)">
+            <button class="schedule-preset-btn" data-cmp-preset="daily_6pm" onclick="selectCampaignPreset('daily_6pm', this)">
               <span>Evening (6 PM)</span>
             </button>
-            <button class="schedule-preset-btn" data-cmp-preset="0 9 * * 1-5" onclick="selectCampaignPreset('0 9 * * 1-5', this)">
+            <button class="schedule-preset-btn" data-cmp-preset="weekdays_9am" onclick="selectCampaignPreset('weekdays_9am', this)">
               <span>Weekdays (9 AM)</span>
             </button>
           </div>
@@ -744,6 +747,36 @@
   </section>
 
   <!-- ── Schedule Automation (Phase 5A) ──────────────────────────── -->
+  <section class="page" id="page-library" aria-label="Asset Library">
+    <div class="section-header" style="margin-bottom:20px;">
+      <span class="glow-label">Asset Library</span>
+      <span class="muted" style="font-size:12px;">Your generated content artifacts across runs</span>
+    </div>
+
+    <div class="intel-filter-bar" id="assetLibraryFilterTabs" style="margin-bottom:16px;">
+      <button class="intel-filter-tab active" onclick="setAssetLibraryFilter('all', this)">All</button>
+      <button class="intel-filter-tab" onclick="setAssetLibraryFilter('pending_review', this)">Pending Review</button>
+      <button class="intel-filter-tab" onclick="setAssetLibraryFilter('approved', this)">Approved</button>
+      <button class="intel-filter-tab" onclick="setAssetLibraryFilter('published', this)">Published</button>
+      <button class="intel-filter-tab" onclick="setAssetLibraryFilter('rejected', this)">Rejected</button>
+      <button class="intel-filter-tab" onclick="setAssetLibraryFilter('scheduled', this)">Scheduled</button>
+      <button class="intel-filter-tab" onclick="setAssetLibraryFilter('draft', this)">Draft</button>
+    </div>
+
+    <div id="assetLibraryList">
+      <div class="skeleton" style="height:140px; margin:8px 0;"></div>
+      <div class="skeleton" style="height:140px; margin:8px 0;"></div>
+    </div>
+
+    <div id="assetLibraryEmptyState" style="display:none;">
+      <div class="surface-card" style="text-align:center; padding:48px 24px;">
+        <div style="font-size:40px; margin-bottom:12px;">*</div>
+        <div style="font-size:16px; font-weight:500; margin-bottom:8px;">No assets found</div>
+        <div style="font-size:13px; color:var(--text-muted);">Run the workflow and save generated outputs to populate the library.</div>
+      </div>
+    </div>
+  </section>
+
   <section class="page" id="page-schedule" aria-label="Schedule">
     <div class="section-header" style="margin-bottom:20px;">
       <span class="glow-label">Schedule Automation</span>
@@ -905,7 +938,7 @@
 
       <!-- Badges Row -->
       <div class="pipeline-badge-row">
-        <span class="pipeline-live-badge visible" id="pipelineLiveBadge">
+        <span class="pipeline-live-badge" id="pipelineLiveBadge">
           <span class="pipeline-live-dot"></span> LIVE
         </span>
       </div>
@@ -913,7 +946,7 @@
       <!-- Vertical Timeline Stepper -->
       <div class="pipeline-stepper" id="pipelineStepper">
 
-        <div class="pipeline-step" id="pipelineStep-fetch" data-state="completed">
+        <div class="pipeline-step" id="pipelineStep-fetch" data-state="idle">
           <div class="step-indicator">
             <div class="step-icon">
               <svg class="step-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -924,11 +957,11 @@
           </div>
           <div class="step-content">
             <div class="step-label">Fetching News Feeds</div>
-            <div class="step-meta" id="stepMeta-fetch">COMPLETED • 1.2S</div>
+            <div class="step-meta" id="stepMeta-fetch">QUEUED</div>
           </div>
         </div>
 
-        <div class="pipeline-step" id="pipelineStep-score" data-state="active">
+        <div class="pipeline-step" id="pipelineStep-score" data-state="idle">
           <div class="step-indicator">
             <div class="step-icon">
               <svg class="step-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -939,7 +972,7 @@
           </div>
           <div class="step-content">
             <div class="step-label">Analyzing Subreddits</div>
-            <div class="step-meta" id="stepMeta-score">IN PROGRESS — R/ARTIFICIAL, R/MACHINELEARNING</div>
+            <div class="step-meta" id="stepMeta-score">QUEUED</div>
           </div>
         </div>
 
@@ -986,24 +1019,9 @@
         </div>
         <div class="console-body" id="pipelineConsole">
           <div class="log-entry">
-            <span class="log-time">10:01:00</span>
+            <span class="log-time">00:00:00</span>
             <span class="log-tag-sys">[SYS]</span>
-            <span class="log-msg">Initializing agent pool...</span>
-          </div>
-          <div class="log-entry">
-            <span class="log-time">10:01:01</span>
-            <span class="log-tag-ai">[AI]</span>
-            <span class="log-msg">Parsing historical success metrics</span>
-          </div>
-          <div class="log-entry">
-            <span class="log-time">10:01:02</span>
-            <span class="log-tag-data">[DATA]</span>
-            <span class="log-msg">Fetch complete: 8 subreddits scanned</span>
-          </div>
-          <div class="log-entry processing">
-            <span class="log-time">10:01:03</span>
-            <span class="log-tag-sys">[SYS]</span>
-            <span class="log-msg">Generating thread drafts<span class="terminal-dots">...</span></span>
+            <span class="log-msg">Ready. Click Produce Shots to start a run.</span>
           </div>
         </div>
       </div>
@@ -1011,9 +1029,9 @@
       <!-- Action Buttons -->
       <div class="pipeline-actions">
         <button class="pipeline-btn-cancel" id="pipelineCancelBtn" onclick="cancelPipeline()">CANCEL</button>
-        <button class="pipeline-btn-primary running" id="runPipelineBtn" onclick="pauseWorkflow()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-          PAUSE PIPELINE
+        <button class="pipeline-btn-primary" id="runPipelineBtn" onclick="toggleWorkflowRun()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          PRODUCE SHOTS
         </button>
       </div>
 

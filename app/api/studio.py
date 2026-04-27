@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.core.deps import CurrentUser, DB
+from app.core.verification import require_verified_email
 from app.services.ai.enhancer import EnhancerService
 from app.services.ai.llm_client import LLMClient
 from app.services.social_service import SocialService
@@ -72,6 +73,8 @@ async def publish_now(req: PublishRequest, user: CurrentUser, db: DB):
     Takes the finalized, AI-enhanced draft dictionary, saves it to the database,
     and broadcasts it out via the SocialService orchestrator to connected platforms.
     """
+    require_verified_email(user)
+
     from app.models.post import Post, PostResult
 
     # 0. Validate Rules

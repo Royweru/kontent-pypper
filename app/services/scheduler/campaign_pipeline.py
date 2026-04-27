@@ -12,6 +12,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.user import User
 from app.models.content import AssetLibrary
@@ -84,6 +85,13 @@ async def run_campaign_pipeline(campaign_id: int):
             logger.warning(
                 "[CampaignPipeline] user_id=%d not found or inactive.",
                 campaign.user_id,
+            )
+            return
+        if settings.REQUIRE_EMAIL_VERIFICATION and not user.is_email_verified:
+            logger.info(
+                "[CampaignPipeline] user_id=%d email is not verified. Skipping campaign_id=%d.",
+                campaign.user_id,
+                campaign_id,
             )
             return
 

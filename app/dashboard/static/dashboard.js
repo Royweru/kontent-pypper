@@ -7,10 +7,7 @@
 
 // ── Config ────────────────────────────────────────────────────────
 const API    = '/api/v1';
-const token  = localStorage.getItem('kp_token');
-
-// Guard: redirect to login if unauthenticated
-if (!token) window.location.replace('/dashboard/login');
+let token  = localStorage.getItem('kp_token');
 
 // ── State ─────────────────────────────────────────────────────────
 let currentUser     = null;
@@ -38,6 +35,7 @@ const PAGE_TITLES = {
   overview:    'Overview',
   studio:      'Studio',
   review:      'Review Queue',
+  library:     'Asset Library',
   connections: 'Connections',
   schedule:    'Schedule',
   campaigns:   'Campaigns',
@@ -50,14 +48,50 @@ const PAGE_TITLES = {
 
 // ── Helpers ───────────────────────────────────────────────────────
 async function apiFetch(path, opts = {}) {
-  return fetch(`${API}${path}`, {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(opts.headers || {}),
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let response = await fetch(`${API}${path}`, {
     ...opts,
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type':  'application/json',
-      ...(opts.headers || {}),
-    },
+    credentials: 'include',
+    headers,
   });
+
+  if (response.status === 401 && path !== '/auth/refresh') {
+    const refreshed = await refreshAuthToken();
+    if (refreshed) {
+      const retryHeaders = {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      };
+      response = await fetch(`${API}${path}`, {
+        ...opts,
+        credentials: 'include',
+        headers: retryHeaders,
+      });
+    }
+  }
+
+  return response;
+}
+
+async function refreshAuthToken() {
+  try {
+    const response = await fetch(`${API}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!response.ok) return false;
+    const data = await response.json();
+    token = data.access_token;
+    localStorage.setItem('kp_token', token);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function esc(s) {
@@ -65,6 +99,14 @@ function esc(s) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+function getApiErrorMessage(payload, fallback = 'Request failed') {
+  const detail = payload?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (detail && typeof detail.message === 'string' && detail.message.trim()) return detail.message;
+  if (typeof payload?.message === 'string' && payload.message.trim()) return payload.message;
+  return fallback;
 }
 
 // ── Toast ─────────────────────────────────────────────────────────
@@ -100,13 +142,21 @@ function navigate(pageId) {
   if (pageId === 'analytics')   loadAnalytics();
   if (pageId === 'settings')    loadTelegramSettings();
   if (pageId === 'review')      loadReviewQueue();
+  if (pageId === 'library')     loadAssetLibrary();
   if (pageId === 'schedule')    loadScheduleConfig();
   if (pageId === 'campaigns')   loadCampaigns();
 }
 
 // ── Auth & user ───────────────────────────────────────────────────
-function logout() {
+async function logout() {
+  try {
+    await fetch(`${API}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  } catch {}
   localStorage.removeItem('kp_token');
+  localStorage.removeItem('token');
   window.location.replace('/dashboard/login');
 }
 
@@ -1362,6 +1412,7 @@ async function detectTelegramChat() {
 function openAutomateModal() {
   const modal = document.getElementById('automateModalOverlay');
   if (modal) modal.classList.add('open');
+  if (!pipelineEventSource) resetPipelineUI();
 }
 function closeAutomateModal() {
   const modal = document.getElementById('automateModalOverlay');
@@ -1989,14 +2040,19 @@ function createPostFromArticle(title, url) {
 
 // ── Pipeline Modal: State Management ──────────────────────────────
 let pipelineEventSource = null;
-let pipelineStartTime   = null;
-const PIPELINE_NODES    = ['fetch', 'score', 'draft', 'generate_media'];
+let pipelineStartTime = null;
+let pipelineRunKey = null;
+let pipelineStarting = false;
+let latestWorkflowState = {};
+const PIPELINE_NODES = ['fetch', 'score', 'draft', 'generate_media'];
 const NODE_LABELS = {
-  fetch:          'Fetching News Feeds',
-  score:          'Analyzing Subreddits',
-  draft:          'Generating Content',
+  fetch: 'Fetching News Feeds',
+  score: 'Analyzing Subreddits',
+  draft: 'Generating Content',
   generate_media: 'Creating Videos',
 };
+const RUN_BUTTON_IDLE_HTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> PRODUCE SHOTS';
+const RUN_BUTTON_RUNNING_HTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> CANCEL RUN';
 
 function getTimestamp() {
   const d = new Date();
@@ -2022,168 +2078,329 @@ function setStepState(nodeId, state, metaText) {
   if (meta && metaText) meta.textContent = metaText;
 }
 
-function resetPipelineUI() {
-  // Reset all steps to idle
-  PIPELINE_NODES.forEach(n => setStepState(n, 'idle', 'QUEUED'));
-  // Clear console
+function setRunButtonIdle() {
+  const btn = document.getElementById('runPipelineBtn');
+  if (!btn) return;
+  btn.disabled = false;
+  btn.classList.remove('running');
+  btn.innerHTML = RUN_BUTTON_IDLE_HTML;
+}
+
+function setRunButtonRunning() {
+  const btn = document.getElementById('runPipelineBtn');
+  if (!btn) return;
+  btn.disabled = false;
+  btn.classList.add('running');
+  btn.innerHTML = RUN_BUTTON_RUNNING_HTML;
+}
+
+function resetPipelineUI(options = {}) {
+  const preserveLogs = options.preserveLogs === true;
+  PIPELINE_NODES.forEach(node => setStepState(node, 'idle', 'QUEUED'));
+
   const body = document.getElementById('pipelineConsole');
-  if (body) body.innerHTML = '';
-  // Hide LIVE badge
+  if (body && !preserveLogs) {
+    body.innerHTML = '';
+    consoleLog('SYS', 'Ready. Click Produce Shots to start a run.');
+  }
+
   const badge = document.getElementById('pipelineLiveBadge');
   if (badge) badge.classList.remove('visible');
-  // Reset run button
-  const btn = document.getElementById('runPipelineBtn');
-  if (btn) {
-    btn.disabled = false;
-    btn.classList.remove('running');
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> RUN PIPELINE';
+
+  setRunButtonIdle();
+}
+
+function closePipelineStream() {
+  if (!pipelineEventSource) return;
+  pipelineEventSource.close();
+  pipelineEventSource = null;
+}
+
+function markNodeProgress(node, statusText, progress) {
+  if (!node || !PIPELINE_NODES.includes(node)) return;
+  const nodeIndex = PIPELINE_NODES.indexOf(node);
+  const elapsed = pipelineStartTime
+    ? ((Date.now() - pipelineStartTime) / 1000).toFixed(1)
+    : '0.0';
+  const suffix = progress?.percent ? ` (${progress.percent}%)` : '';
+  setStepState(node, 'completed', `COMPLETED - ${elapsed}s${suffix}`);
+  if (statusText) consoleLog('SYS', statusText);
+
+  const nextNode = PIPELINE_NODES[nodeIndex + 1];
+  if (nextNode) {
+    setStepState(nextNode, 'active', 'IN PROGRESS');
   }
 }
 
-function startWorkflow() {
-  const btn = document.getElementById('runPipelineBtn');
-  if (!btn) return;
+function markNodeStarted(node, message) {
+  if (!node || !PIPELINE_NODES.includes(node)) return;
+  setStepState(node, 'active', 'IN PROGRESS');
+  if (message) consoleLog('SYS', message);
+}
 
-  if (userFeeds.length === 0) {
-    toast('Please add at least one feed first', 'warning');
+function markAllNodesCompleted() {
+  const elapsed = pipelineStartTime
+    ? ((Date.now() - pipelineStartTime) / 1000).toFixed(1)
+    : '0.0';
+  PIPELINE_NODES.forEach(node => setStepState(node, 'completed', `COMPLETED - ${elapsed}s`));
+}
+
+function normalizeWorkflowEvent(data) {
+  if (data && data.event_type) return data;
+
+  if (data?.status === 'DONE') {
+    return {
+      event_type: 'run_completed',
+      run_key: data.run_key,
+      status: 'DONE',
+      message: 'Workflow complete',
+      ...data,
+    };
+  }
+
+  if (data?.status === 'ERROR') {
+    return {
+      event_type: 'run_failed',
+      status: 'ERROR',
+      message: data.error || 'Workflow failed',
+      ...data,
+    };
+  }
+
+  return {
+    event_type: 'node_completed',
+    node: null,
+    status: data?.status || '',
+    message: data?.status || '',
+    state: data || {},
+    ...data,
+  };
+}
+
+async function handleCreateRunError(response) {
+  let detail = null;
+  try {
+    const payload = await response.json();
+    detail = payload?.detail ?? null;
+  } catch {}
+
+  if (response.status === 401) {
+    toast('Session expired. Please sign in again.', 'error');
+    logout();
+    return;
+  }
+  if (response.status === 403) {
+    toast(detail?.message || detail || 'Email verification is required before running automation.', 'error');
+    return;
+  }
+  if (response.status === 429) {
+    toast(detail?.message || 'Daily run limit reached for your plan.', 'warning');
+    return;
+  }
+  if (response.status >= 500) {
+    toast('Server error while starting workflow. Please retry.', 'error');
+    return;
+  }
+  toast((typeof detail === 'string' ? detail : detail?.message) || 'Failed to start workflow.', 'error');
+}
+
+function buildLatestWorkflowResult(payload) {
+  const finalState = payload.final_state || latestWorkflowState || {};
+  return {
+    ...finalState,
+    ...payload,
+    run_key: payload.run_key || pipelineRunKey,
+    scripts: payload.scripts || finalState.scripts || {},
+    selected_article: payload.selected_article || finalState.selected_article || null,
+    video_asset: payload.video_asset || finalState.video_asset || null,
+    video_script: payload.video_script || finalState.video_script || null,
+  };
+}
+
+async function fetchWorkflowRunDetails(runKey) {
+  if (!runKey) return null;
+  try {
+    const response = await apiFetch(`/workflow/runs/${runKey}`);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+async function finalizeRunSuccess(payload) {
+  closePipelineStream();
+  pipelineStarting = false;
+  markAllNodesCompleted();
+  const totalTime = pipelineStartTime
+    ? ((Date.now() - pipelineStartTime) / 1000).toFixed(1)
+    : '0.0';
+  consoleLog('SYS', `Pipeline complete in ${totalTime}s. Assets ready for review.`);
+  setRunButtonIdle();
+  toast('Content automation finished!', 'success');
+
+  let hydratedResult = buildLatestWorkflowResult(payload);
+  const details = await fetchWorkflowRunDetails(payload.run_key || pipelineRunKey);
+  if (details && details.final_state) {
+    const finalState = details.final_state || {};
+    hydratedResult = {
+      ...hydratedResult,
+      ...finalState,
+      run_key: payload.run_key || pipelineRunKey,
+      scripts: finalState.scripts || hydratedResult.scripts || {},
+      selected_article: finalState.selected_article || hydratedResult.selected_article || null,
+      video_asset: finalState.video_asset || hydratedResult.video_asset || null,
+      video_script: finalState.video_script || hydratedResult.video_script || null,
+      quality_summary: finalState.quality_summary || hydratedResult.quality_summary || {},
+      run: details.run || null,
+      events: details.events || [],
+    };
+  }
+
+  window.latestWorkflowResult = hydratedResult;
+  pipelineRunKey = null;
+
+  setTimeout(() => {
+    closeAutomateModal();
+    openHitlModal(hydratedResult);
+  }, 1200);
+}
+
+function finalizeRunFailure(payload) {
+  closePipelineStream();
+  pipelineStarting = false;
+  const message = payload?.message || payload?.error || 'Pipeline execution failed.';
+  consoleLog('ERR', message);
+  setRunButtonIdle();
+  pipelineRunKey = null;
+  toast(message, 'error');
+}
+
+async function handlePipelineMessage(event) {
+  let raw;
+  try {
+    raw = JSON.parse(event.data);
+  } catch {
+    consoleLog('ERR', 'Received malformed workflow event.');
     return;
   }
 
-  // Reset everything
+  const payload = normalizeWorkflowEvent(raw);
+  const eventType = payload.event_type;
+
+  if (eventType === 'run_started') {
+    const badge = document.getElementById('pipelineLiveBadge');
+    if (badge) badge.classList.add('visible');
+    const firstNode = payload?.progress?.next_node || 'fetch';
+    setStepState(firstNode, 'active', 'IN PROGRESS');
+    consoleLog('SYS', payload.message || 'Workflow run started.');
+    if (payload.state) latestWorkflowState = { ...latestWorkflowState, ...payload.state };
+    return;
+  }
+
+  if (eventType === 'node_started') {
+    markNodeStarted(payload.node, payload.message);
+    return;
+  }
+
+  if (eventType === 'node_completed' || eventType === 'node_update') {
+    if (payload.state) {
+      latestWorkflowState = { ...latestWorkflowState, ...payload.state };
+    }
+    markNodeProgress(payload.node, payload.message || payload.status, payload.progress);
+    return;
+  }
+
+  if (eventType === 'run_failed') {
+    finalizeRunFailure(payload);
+    return;
+  }
+
+  if (eventType === 'run_completed') {
+    if (payload.final_state) {
+      latestWorkflowState = { ...latestWorkflowState, ...payload.final_state };
+    }
+    await finalizeRunSuccess(payload);
+  }
+}
+
+async function startWorkflow() {
+  if (pipelineEventSource || pipelineStarting) return;
+
+  if (userFeeds.length === 0) {
+    toast('Please add at least one feed first.', 'warning');
+    return;
+  }
+
+  pipelineStarting = true;
   resetPipelineUI();
   pipelineStartTime = Date.now();
+  latestWorkflowState = {};
+  setRunButtonRunning();
+  consoleLog('SYS', 'Initializing workflow run...');
 
-  // Show LIVE badge
-  const badge = document.getElementById('pipelineLiveBadge');
-  if (badge) badge.classList.add('visible');
+  let createResponse;
+  try {
+    createResponse = await apiFetch('/workflow/runs', { method: 'POST' });
+  } catch {
+    consoleLog('ERR', 'Network error while creating workflow run.');
+    setRunButtonIdle();
+    pipelineStarting = false;
+    toast('Network error while starting workflow.', 'error');
+    return;
+  }
 
-  // Switch button to running state
-  btn.disabled = true;
-  btn.classList.add('running');
-  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> PAUSE PIPELINE';
+  if (!createResponse.ok) {
+    await handleCreateRunError(createResponse);
+    setRunButtonIdle();
+    pipelineStarting = false;
+    return;
+  }
 
-  // Boot console
-  consoleLog('SYS', 'Connection established with LangGraph engine...');
+  const createPayload = await createResponse.json();
+  pipelineRunKey = createPayload.run_key;
+  if (!pipelineRunKey) {
+    consoleLog('ERR', 'Server did not return a run key.');
+    setRunButtonIdle();
+    pipelineStarting = false;
+    toast('Failed to start workflow run.', 'error');
+    return;
+  }
 
-  // Set first node to active
-  setStepState('fetch', 'active', 'IN PROGRESS');
-
-  // Track which node index we are on
-  let currentNodeIdx = 0;
-
-  const token = localStorage.getItem('kontent_token');
-  pipelineEventSource = new EventSource(`/api/v1/workflow/run?token=${token || ''}`);
-
-  pipelineEventSource.onmessage = function(event) {
-    const data = JSON.parse(event.data);
-
-    // ── Pipeline DONE ──
-    if (data.status === 'DONE') {
-      pipelineEventSource.close();
-      pipelineEventSource = null;
-
-      // Mark all remaining nodes as completed
-      PIPELINE_NODES.forEach(n => {
-        const el = document.getElementById('pipelineStep-' + n);
-        if (el && el.getAttribute('data-state') !== 'completed') {
-          const elapsed = ((Date.now() - pipelineStartTime) / 1000).toFixed(1);
-          setStepState(n, 'completed', 'COMPLETED - ' + elapsed + 's');
-        }
-      });
-
-      const totalTime = ((Date.now() - pipelineStartTime) / 1000).toFixed(1);
-      consoleLog('SYS', 'Pipeline complete in ' + totalTime + 's. Assets ready for review.');
-
-      btn.disabled = false;
-      btn.classList.remove('running');
-      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> RUN PIPELINE';
-
-      toast('Content automation finished!', 'success');
-
-      window.latestWorkflowResult = data;
-
-      // Transition to HITL after a brief delay
-      setTimeout(() => {
-        closeAutomateModal();
-        openHitlModal(window.latestWorkflowResult);
-      }, 2000);
-      return;
-    }
-
-    // ── Pipeline ERROR ──
-    if (data.status === 'ERROR') {
-      pipelineEventSource.close();
-      pipelineEventSource = null;
-      consoleLog('ERR', 'Pipeline failed: ' + (data.error || 'Unknown error'));
-      toast('Pipeline execution error', 'error');
-      btn.disabled = false;
-      btn.classList.remove('running');
-      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> RUN PIPELINE';
-      return;
-    }
-
-    // ── Node state transition ──
-    // The SSE data includes a 'status' text that typically references the node
-    const statusText = data.status || '';
-
-    // Determine which node just completed based on SSE structure
-    // LangGraph streams: { "node_name": { ...state_update } }
-    // But our API wraps it as data.status
-    // We advance the stepper sequentially
-    if (statusText && statusText !== 'Starting pipeline...') {
-      // Complete current node
-      if (currentNodeIdx < PIPELINE_NODES.length) {
-        const currentNode = PIPELINE_NODES[currentNodeIdx];
-        const elapsed = ((Date.now() - pipelineStartTime) / 1000).toFixed(1);
-        setStepState(currentNode, 'completed', 'COMPLETED - ' + elapsed + 's');
-
-        // Generate context-aware console log
-        const logMap = {
-          fetch:          () => { consoleLog('AI', 'Scanning feeds for high-velocity trends...'); },
-          score:          () => { consoleLog('DATA', 'Context extracted: relevance scoring complete (0.98)'); },
-          draft:          () => { consoleLog('AI', 'Generating platform-optimized scripts...'); },
-          generate_media: () => { consoleLog('DATA', 'Video asset pipeline rendered successfully.'); },
-        };
-        if (logMap[currentNode]) logMap[currentNode]();
-
-        // Move to next node
-        currentNodeIdx++;
-        if (currentNodeIdx < PIPELINE_NODES.length) {
-          const nextNode = PIPELINE_NODES[currentNodeIdx];
-          setStepState(nextNode, 'active', 'IN PROGRESS');
-          consoleLog('SYS', 'Processing node: ' + NODE_LABELS[nextNode] + '...');
-        }
-      }
-    }
-
-    // Also write raw status to console
-    if (statusText && statusText !== 'Starting pipeline...') {
-      consoleLog('SYS', statusText);
-    }
-  };
-
-  pipelineEventSource.onerror = function(err) {
-    if (pipelineEventSource) {
-      pipelineEventSource.close();
-      pipelineEventSource = null;
-    }
-    consoleLog('ERR', 'SSE connection lost. Check server status.');
-    btn.disabled = false;
-    btn.classList.remove('running');
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> RUN PIPELINE';
-    toast('Pipeline connection error', 'error');
-    console.error('SSE Error:', err);
+  const streamUrl = createPayload.stream_url || `/api/v1/workflow/runs/${pipelineRunKey}/stream`;
+  pipelineEventSource = new EventSource(streamUrl);
+  pipelineStarting = false;
+  pipelineEventSource.onmessage = event => { void handlePipelineMessage(event); };
+  pipelineEventSource.onerror = function() {
+    closePipelineStream();
+    consoleLog('ERR', 'Workflow stream disconnected unexpectedly.');
+    setRunButtonIdle();
+    pipelineRunKey = null;
+    pipelineStarting = false;
+    toast('Workflow stream disconnected. Please retry.', 'error');
   };
 }
 
-function cancelPipeline() {
+function toggleWorkflowRun() {
+  if (pipelineStarting) return;
   if (pipelineEventSource) {
-    pipelineEventSource.close();
-    pipelineEventSource = null;
-    consoleLog('SYS', 'Pipeline cancelled by user.');
-    toast('Pipeline cancelled', 'warning');
+    cancelPipeline();
+    return;
   }
-  resetPipelineUI();
+  startWorkflow();
+}
+window.toggleWorkflowRun = toggleWorkflowRun;
+
+function cancelPipeline() {
+  pipelineStarting = false;
+  if (pipelineEventSource) {
+    closePipelineStream();
+    consoleLog('SYS', 'Run cancelled by user.');
+    toast('Run cancelled.', 'warning');
+  }
+  pipelineRunKey = null;
+  latestWorkflowState = {};
+  resetPipelineUI({ preserveLogs: true });
 }
 
 async function loadUserFeeds() {
@@ -2198,7 +2415,6 @@ async function loadUserFeeds() {
 }
 loadUserFeeds();
 
-// ── HITL Modal ────────────────────────────────────────────────────
 window.openHitlModal = function(data) {
   const modal = document.getElementById('hitlModalOverlay');
   if (modal) {
@@ -2206,14 +2422,21 @@ window.openHitlModal = function(data) {
       
       // Inject drafted content. Defaulting to Twitter text
       const captionText = document.getElementById('hitlCaptionInput');
-      if (captionText && data.scripts) {
-          captionText.value = data.scripts.twitter || data.scripts.linkedin || '';
+      if (captionText) {
+          captionText.value = data?.scripts?.twitter || data?.scripts?.linkedin || '';
+          if (!captionText.value) {
+            captionText.value = 'No generated caption available for this run.';
+          }
       }
       
       // Inject video
       const vidContainer = document.getElementById('hitlVideoContainer');
-      if (vidContainer && data.video_asset) {
-          vidContainer.innerHTML = `<video src="${data.video_asset}" autoplay loop muted controls style="width:100%; height:100%; object-fit:cover;"></video>`;
+      if (vidContainer) {
+          if (data?.video_asset) {
+            vidContainer.innerHTML = `<video src="${data.video_asset}" autoplay loop muted controls style="width:100%; height:100%; object-fit:cover;"></video>`;
+          } else {
+            vidContainer.innerHTML = '<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:16px;">No generated video asset available for this run.</div>';
+          }
       }
   }
 };
@@ -2247,13 +2470,22 @@ window.saveAssetsToLibrary = async function() {
     toast('Saving to Asset Library...', 'info');
     
     // Call the backend to save the asset
-    const r = await apiFetch('/media/assets', {
+    const r = await apiFetch('/assets', {
         method: 'POST',
         body: JSON.stringify({
             asset_type: 'video',
             content_url: data.video_asset,
             text_content: document.getElementById('hitlCaptionInput').value,
-            title: data.selected_article?.title || 'Auto-generated Asset'
+            title: data.selected_article?.title || 'Auto-generated Asset',
+            status: 'pending_review',
+            platforms_used: Object.keys(data.scripts || {}),
+            platform_drafts: data.scripts || {},
+            video_script_data: data.video_script || null,
+            source_article_title: data.selected_article?.title || null,
+            source_article_url: data.selected_article?.url || null,
+            video_model_used: data.video_source || null,
+            credits_consumed: data.credits_consumed || 0,
+            workflow_run_id: data.run_key || null
         })
     });
     
@@ -2268,6 +2500,99 @@ window.saveAssetsToLibrary = async function() {
 // ══════════════════════════════════════════════════════════════════════
 // ── Phase 5B: Review Queue ────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════
+
+// ======================================================================
+// Asset Library
+// ======================================================================
+let assetLibraryFilter = 'all';
+
+function setAssetLibraryFilter(filter, btnEl) {
+  assetLibraryFilter = filter;
+  document.querySelectorAll('#assetLibraryFilterTabs .intel-filter-tab').forEach(tab => {
+    tab.classList.remove('active');
+  });
+  if (btnEl) btnEl.classList.add('active');
+  loadAssetLibrary();
+}
+
+async function loadAssetLibrary() {
+  const list = document.getElementById('assetLibraryList');
+  const empty = document.getElementById('assetLibraryEmptyState');
+  if (!list || !empty) return;
+
+  empty.style.display = 'none';
+  list.innerHTML = '<div class="skeleton" style="height:140px; margin:8px 0;"></div>'.repeat(3);
+
+  const params = new URLSearchParams({ limit: '100', offset: '0' });
+  if (assetLibraryFilter !== 'all') params.set('status', assetLibraryFilter);
+
+  try {
+    const r = await apiFetch(`/assets?${params.toString()}`);
+    if (!r.ok) {
+      list.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">Could not load asset library.</div>';
+      return;
+    }
+
+    const payload = await r.json();
+    const items = Array.isArray(payload) ? payload : (payload.items || []);
+    if (!items.length) {
+      list.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+
+    list.innerHTML = items.map(renderAssetLibraryCard).join('');
+  } catch {
+    list.innerHTML = '<div class="intel-empty-chip" style="padding:30px;">Failed to load asset library.</div>';
+  }
+}
+
+function renderAssetLibraryCard(item) {
+  const statusColors = {
+    draft: 'var(--text-muted)',
+    pending_review: 'var(--warning, #f59e0b)',
+    approved: 'var(--success, #22c55e)',
+    published: 'var(--accent)',
+    rejected: 'var(--danger, #ef4444)',
+    scheduled: 'var(--lavender, #c8bfff)',
+  };
+  const statusColor = statusColors[item.status] || 'var(--text-muted)';
+  const statusLabel = (item.status || 'draft').replace('_', ' ').toUpperCase();
+  const createdAt = item.created_at ? formatTimeAgo(new Date(item.created_at)) : '';
+  const preview = (item.text_content || '').trim();
+  const shortPreview = preview.length > 160 ? `${preview.slice(0, 160)}...` : preview;
+  const platforms = (item.platforms_used || []).map(p =>
+    `<span style="display:inline-block; padding:2px 8px; background:rgba(200,249,81,0.06); border:1px solid rgba(200,249,81,0.15); border-radius:12px; font-size:10px; font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.05em;">${esc(p)}</span>`
+  ).join('');
+
+  const media = item.content_url
+    ? `<video src="${esc(item.content_url)}" style="width:100%; height:100%; object-fit:cover;" muted></video>`
+    : '<div style="font-size:24px; color:var(--text-muted);">✦</div>';
+
+  const reviewAction = item.status === 'pending_review'
+    ? `<button class="btn-ghost" style="padding:6px 12px; width:auto;" onclick="navigate('review')">Open In Review</button>`
+    : '';
+
+  return `
+  <div class="surface-card" style="margin-bottom:12px; padding:16px;">
+    <div style="display:flex; align-items:flex-start; gap:16px;">
+      <div style="width:100px; height:80px; background:var(--base); border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+        ${media}
+      </div>
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${statusColor};"></span>
+          <span style="font-family:var(--font-mono); font-size:10px; letter-spacing:0.08em; color:${statusColor};">${statusLabel}</span>
+          <span style="font-size:11px; color:var(--text-muted);">${createdAt}</span>
+        </div>
+        <div style="font-size:14px; font-weight:500; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(item.title || 'Untitled asset')}</div>
+        <div style="font-size:12px; color:var(--text-muted); line-height:1.5; margin-bottom:6px;">${esc(shortPreview || 'No text preview available.')}</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">${platforms}</div>
+        ${reviewAction}
+      </div>
+    </div>
+  </div>`;
+}
 
 let reviewCurrentFilter = 'pending_review';
 
@@ -2558,9 +2883,16 @@ setTimeout(pollReviewBadge, 2000);
 // ── Autonomous Campaigns ──────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════
 
-let campaignEditId = null;          // null = create, int = edit
-let campaignCronExpr = '0 8 * * *'; // default schedule
-let campaignsList = [];             // cached list for card re-rendering
+const CAMPAIGN_PRESET_LABELS = {
+  daily_8am: 'Daily at 8:00 AM',
+  daily_12pm: 'Daily at 12:00 PM',
+  daily_6pm: 'Daily at 6:00 PM',
+  weekdays_9am: 'Weekdays at 9:00 AM',
+};
+
+let campaignEditId = null;
+let campaignSchedulePreset = 'daily_8am';
+let campaignsList = [];
 
 // ── Load & Render ─────────────────────────────────────────────────────
 async function loadCampaigns() {
@@ -2596,7 +2928,8 @@ async function loadCampaigns() {
       return;
     }
 
-    campaignsList = await r.json();
+    const payload = await r.json();
+    campaignsList = Array.isArray(payload) ? payload : (payload.campaigns || []);
 
     // Stats aggregation
     let activeCt = 0, totalRuns = 0, totalPublished = 0, totalCredits = 0;
@@ -2646,7 +2979,7 @@ function renderCampaignCard(c) {
   ).join('');
 
   // Format schedule
-  const scheduleDisplay = formatCronDisplay(c.cron_expression);
+  const scheduleDisplay = formatCampaignSchedule(c);
 
   // Last run
   const lastRunText = c.last_run_at ? formatTimeAgo(new Date(c.last_run_at)) : 'Never';
@@ -2660,6 +2993,7 @@ function renderCampaignCard(c) {
   let actions = '';
   if (c.status === 'active') {
     actions = `
+      <button class="cmp-action-btn" onclick="runCampaignNow(${c.id})">Run now</button>
       <button class="cmp-action-btn" onclick="openCampaignRuns(${c.id}, '${esc(c.name)}')">Runs (${c.total_runs || 0})</button>
       <button class="cmp-action-btn" onclick="editCampaign(${c.id})">Edit</button>
       <button class="cmp-action-btn" onclick="pauseCampaign(${c.id})">Pause</button>
@@ -2697,15 +3031,19 @@ function renderCampaignCard(c) {
   </div>`;
 }
 
-function formatCronDisplay(cron) {
-  if (!cron) return 'No schedule';
-  const cronMap = {
-    '0 8 * * *':   'Daily at 8:00 AM',
-    '0 12 * * *':  'Daily at 12:00 PM',
-    '0 18 * * *':  'Daily at 6:00 PM',
-    '0 9 * * 1-5': 'Weekdays at 9:00 AM',
-  };
-  return cronMap[cron] || cron;
+function formatCampaignSchedule(campaign) {
+  if (!campaign) return 'No schedule';
+  if (campaign.schedule_preset && CAMPAIGN_PRESET_LABELS[campaign.schedule_preset]) {
+    return CAMPAIGN_PRESET_LABELS[campaign.schedule_preset];
+  }
+
+  if (campaign.cron_hour == null || campaign.cron_minute == null) return 'Custom schedule';
+  const hour = Number(campaign.cron_hour);
+  const minute = Number(campaign.cron_minute);
+  const dayLabel = campaign.cron_dow && campaign.cron_dow !== '*'
+    ? ` (${campaign.cron_dow})`
+    : '';
+  return `Custom ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}${dayLabel}`;
 }
 
 // ── Campaign Modal ────────────────────────────────────────────────────
@@ -2725,9 +3063,10 @@ function openCampaignModal(editData) {
   document.getElementById('cmpAutoPublish').checked = editData ? editData.auto_publish : false;
 
   // Schedule preset
-  campaignCronExpr = editData ? (editData.cron_expression || '0 8 * * *') : '0 8 * * *';
+  const existingPreset = editData?.schedule_preset;
+  campaignSchedulePreset = CAMPAIGN_PRESET_LABELS[existingPreset] ? existingPreset : 'daily_8am';
   document.querySelectorAll('[data-cmp-preset]').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.cmpPreset === campaignCronExpr);
+    btn.classList.toggle('active', btn.dataset.cmpPreset === campaignSchedulePreset);
   });
 
   // Render platform toggles
@@ -2742,8 +3081,8 @@ function closeCampaignModal() {
   campaignEditId = null;
 }
 
-function selectCampaignPreset(cron, btnEl) {
-  campaignCronExpr = cron;
+function selectCampaignPreset(preset, btnEl) {
+  campaignSchedulePreset = preset;
   document.querySelectorAll('[data-cmp-preset]').forEach(b => b.classList.remove('active'));
   if (btnEl) btnEl.classList.add('active');
 }
@@ -2800,7 +3139,7 @@ async function saveCampaign() {
     name,
     niche,
     topic_instructions: instr || null,
-    cron_expression: campaignCronExpr,
+    schedule_preset: campaignSchedulePreset,
     max_runs_per_day: maxRuns,
     auto_publish: autoPub,
     target_platforms: platforms,
@@ -2826,7 +3165,7 @@ async function saveCampaign() {
       loadCampaigns();
     } else {
       const err = await r.json().catch(() => ({}));
-      toast(err.detail || 'Failed to save campaign', 'error');
+      toast(getApiErrorMessage(err, 'Failed to save campaign'), 'error');
     }
   } catch (e) {
     toast('Error: ' + e.message, 'error');
@@ -2857,7 +3196,7 @@ async function deleteCampaign(id, name) {
       loadCampaigns();
     } else {
       const err = await r.json().catch(() => ({}));
-      toast(err.detail || 'Failed to delete', 'error');
+      toast(getApiErrorMessage(err, 'Failed to delete campaign'), 'error');
     }
   } catch (e) {
     toast('Error: ' + e.message, 'error');
@@ -2872,7 +3211,7 @@ async function pauseCampaign(id) {
       loadCampaigns();
     } else {
       const err = await r.json().catch(() => ({}));
-      toast(err.detail || 'Failed to pause', 'error');
+      toast(getApiErrorMessage(err, 'Failed to pause campaign'), 'error');
     }
   } catch (e) {
     toast('Error: ' + e.message, 'error');
@@ -2887,7 +3226,22 @@ async function resumeCampaign(id) {
       loadCampaigns();
     } else {
       const err = await r.json().catch(() => ({}));
-      toast(err.detail || 'Failed to resume', 'error');
+      toast(getApiErrorMessage(err, 'Failed to resume campaign'), 'error');
+    }
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function runCampaignNow(id) {
+  try {
+    const r = await apiFetch(`/campaigns/${id}/run-now`, { method: 'POST' });
+    if (r.ok) {
+      toast('Campaign run queued.', 'success');
+      loadCampaigns();
+    } else {
+      const err = await r.json().catch(() => ({}));
+      toast(getApiErrorMessage(err, 'Failed to queue run'), 'error');
     }
   } catch (e) {
     toast('Error: ' + e.message, 'error');

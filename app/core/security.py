@@ -12,6 +12,7 @@ from passlib.context import CryptContext
 from app.core.config import settings
 
 import hashlib
+import secrets
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -54,6 +55,16 @@ def create_access_token(
     )
     payload.update({"exp": expire})
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def create_refresh_token() -> str:
+    """Create a high-entropy opaque refresh token."""
+    return secrets.token_urlsafe(64)
+
+
+def hash_token(token: str) -> str:
+    """Return a stable one-way hash for storing opaque tokens."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def decode_access_token(token: str) -> Optional[dict]:

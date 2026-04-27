@@ -7,17 +7,18 @@ import asyncio
 import logging
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models.user import User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 logger = logging.getLogger(__name__)
 
 
@@ -47,11 +48,13 @@ def _is_transient_db_error(exc: Exception) -> bool:
 
 
 async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    request: Request,
+    token: Annotated[str | None, Depends(oauth2_scheme)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> User:
     """
-    Validate JWT bearer token and return the authenticated User.
+    Validate JWT access token and return the authenticated User.
+    Cookie auth is preferred; Bearer auth remains supported for API clients.
     Raises 401 if the token is missing, invalid, or expired.
     """
     credentials_exc = HTTPException(
@@ -60,7 +63,11 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    payload = decode_access_token(token)
+    access_token = request.cookies.get(settings.AUTH_ACCESS_COOKIE_NAME) or token
+    if not access_token:
+        raise credentials_exc
+
+    payload = decode_access_token(access_token)
     if not payload:
         raise credentials_exc
 

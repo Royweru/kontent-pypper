@@ -4,6 +4,7 @@ CRUD endpoints for managing agent-driven content campaigns (Max tier only).
 """
 
 import logging
+import asyncio
 from datetime import datetime, timedelta
 from typing import Optional, List
 
@@ -15,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.deps import get_current_user
 from app.core.database import get_db
+from app.core.verification import require_verified_email
 from app.models.user import User
 from app.models.campaign import AgentCampaign, AgentCampaignRun
 from app.services.credit_service import get_tier_config
@@ -104,6 +106,7 @@ def _serialize_campaign(c: AgentCampaign) -> dict:
         "cron_minute": c.cron_minute,
         "cron_dow": c.cron_dow,
         "max_runs_per_day": c.max_runs_per_day,
+        "runs_today": c.runs_today or 0,
         "retry_on_failure": c.retry_on_failure,
         "max_retries": c.max_retries,
         "status": c.status,
@@ -268,6 +271,7 @@ async def create_campaign(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new autonomous campaign and register its cron job."""
+    require_verified_email(current_user)
     _enforce_max_tier(current_user)
 
     # Limit total active campaigns per user (prevent abuse)
@@ -542,4 +546,48 @@ async def list_campaign_runs(
         "total": total,
         "limit": limit,
         "offset": offset,
+    }
+
+
+@router.post("/{campaign_id}/run-now")
+async def run_campaign_now(
+    campaign_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Trigger a campaign execution immediately in the background.
+    """
+    require_verified_email(current_user)
+    _enforce_max_tier(current_user)
+
+    result = await db.execute(
+        select(AgentCampaign).where(
+            AgentCampaign.id == campaign_id,
+            AgentCampaign.user_id == current_user.id,
+        )
+    )
+    campaign = result.scalar_one_or_none()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+
+    if not campaign.is_active or campaign.status not in ("active",):
+        raise HTTPException(
+            status_code=400,
+            detail="Campaign must be active before triggering a manual run.",
+        )
+
+    from app.services.scheduler.campaign_pipeline import run_campaign_pipeline
+
+    asyncio.create_task(run_campaign_pipeline(campaign_id))
+    logger.info(
+        "[Campaign] Manual run requested campaign_id=%d user_id=%d",
+        campaign_id,
+        current_user.id,
+    )
+
+    return {
+        "status": "queued",
+        "message": "Campaign run has been queued.",
+        "campaign_id": campaign_id,
     }

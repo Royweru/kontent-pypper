@@ -10,6 +10,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.user import User
 from app.models.content import AssetLibrary
@@ -49,6 +50,9 @@ async def run_headless_pipeline(user_id: int):
 
         if not user or not user.is_active:
             logger.warning("[HeadlessPipeline] user_id=%d not found or inactive.", user_id)
+            return
+        if settings.REQUIRE_EMAIL_VERIFICATION and not user.is_email_verified:
+            logger.info("[HeadlessPipeline] user_id=%d email is not verified. Skipping.", user_id)
             return
 
         tier = user.tier_level or "free"

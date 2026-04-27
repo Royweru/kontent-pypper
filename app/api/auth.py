@@ -5,15 +5,20 @@ POST /login, POST /register, GET /me
 
 from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.core.auth_cookies import clear_auth_cookies, set_auth_cookies
 from app.core.deps import DB, CurrentUser
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.config import settings
 from app.models.user import User
+from app.services.auth_session_service import AuthSessionService
+from app.services.email_verification_service import EmailVerificationService
+from app.services.google_auth_service import GoogleAuthError, GoogleAuthService
 from app.schemas.auth import (
     UserRegister,
     UserResponse,
@@ -23,8 +28,12 @@ from app.schemas.auth import (
 router = APIRouter()
 
 
+def _verification_url(request: Request, token: str) -> str:
+    return f"{request.url_for('verify_email')}?token={token}"
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: UserRegister, db: DB):
+async def register(payload: UserRegister, request: Request, db: DB):
     """Create a new user account."""
     # Check email uniqueness
     existing = await db.execute(select(User).where(User.email == payload.email))
@@ -50,11 +59,161 @@ async def register(payload: UserRegister, db: DB):
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    token = await EmailVerificationService.issue_token(db, user)
+    await EmailVerificationService.send_verification_email(
+        user,
+        _verification_url(request, token),
+    )
     return user
 
 
+@router.get("/verify-email", name="verify_email")
+async def verify_email(token: str, db: DB):
+    """Verify a user's email address from an emailed token."""
+    user = await EmailVerificationService.verify_token(db, token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token.",
+        )
+    return {"success": True, "message": "Email verified. You can now use automation features."}
+
+
+@router.post("/resend-verification")
+async def resend_verification(request: Request, user: CurrentUser, db: DB):
+    """Issue and send a fresh verification email for the current user."""
+    if user.is_email_verified:
+        return {"success": True, "message": "Email is already verified."}
+
+    token = await EmailVerificationService.issue_token(db, user)
+    sent = await EmailVerificationService.send_verification_email(
+        user,
+        _verification_url(request, token),
+    )
+    payload = {
+        "success": True,
+        "message": "Verification email sent." if sent else "Verification link generated.",
+        "email_sent": sent,
+    }
+    if not sent:
+        payload["verification_url"] = _verification_url(request, token)
+    return payload
+
+
+def _request_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else None
+
+
+def _google_redirect_uri(request: Request) -> str:
+    if settings.GOOGLE_AUTH_REDIRECT_URI:
+        return settings.GOOGLE_AUTH_REDIRECT_URI
+    return str(request.url_for("google_auth_callback"))
+
+
+def _set_google_state_cookie(response: Response, nonce: str) -> None:
+    cookie_options = {
+        "httponly": True,
+        "secure": settings.COOKIE_SECURE,
+        "samesite": settings.COOKIE_SAMESITE,
+        "path": "/api/v1/auth/google",
+        "max_age": 600,
+    }
+    if settings.COOKIE_DOMAIN:
+        cookie_options["domain"] = settings.COOKIE_DOMAIN
+    response.set_cookie(settings.GOOGLE_AUTH_STATE_COOKIE_NAME, nonce, **cookie_options)
+
+
+def _clear_google_state_cookie(response: Response) -> None:
+    delete_options = {
+        "path": "/api/v1/auth/google",
+        "secure": settings.COOKIE_SECURE,
+        "samesite": settings.COOKIE_SAMESITE,
+    }
+    if settings.COOKIE_DOMAIN:
+        delete_options["domain"] = settings.COOKIE_DOMAIN
+    response.delete_cookie(settings.GOOGLE_AUTH_STATE_COOKIE_NAME, **delete_options)
+
+
+@router.get("/google/initiate")
+async def initiate_google_login(request: Request, response: Response):
+    """Create a Google account-login authorization URL."""
+    try:
+        state_token, nonce = GoogleAuthService.create_state()
+        auth_url = GoogleAuthService.build_authorization_url(
+            redirect_uri=_google_redirect_uri(request),
+            state_token=state_token,
+        )
+    except GoogleAuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    _set_google_state_cookie(response, nonce)
+    return {"auth_url": auth_url}
+
+
+@router.get("/google/callback", name="google_auth_callback")
+async def google_auth_callback(
+    request: Request,
+    db: DB,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+):
+    """Complete Google account login, set auth cookies, and enter the dashboard."""
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Google login failed: {error}",
+        )
+    if not code or not state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing Google authorization response.",
+        )
+
+    try:
+        GoogleAuthService.validate_state(
+            state,
+            request.cookies.get(settings.GOOGLE_AUTH_STATE_COOKIE_NAME),
+        )
+        profile = await GoogleAuthService.exchange_code_for_profile(
+            code=code,
+            redirect_uri=_google_redirect_uri(request),
+        )
+        user = await GoogleAuthService.get_or_create_user(db, profile)
+    except GoogleAuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    access_token = create_access_token(
+        {"sub": str(user.id)},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_MINUTES),
+    )
+    _, refresh_token = await AuthSessionService.create_session(
+        db,
+        user_id=user.id,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=_request_ip(request),
+    )
+
+    redirect = RedirectResponse(f"{settings.FRONTEND_URL.rstrip('/')}/dashboard")
+    set_auth_cookies(
+        redirect,
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+    _clear_google_state_cookie(redirect)
+    return redirect
+
+
 @router.post("/login", response_model=TokenResponse)
-async def login(db: DB, form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(
+    request: Request,
+    response: Response,
+    db: DB,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+):
     """
     Authenticate with email/username + password.
     Returns a JWT access token.
@@ -82,9 +241,70 @@ async def login(db: DB, form_data: OAuth2PasswordRequestForm = Depends()):
 
     token = create_access_token(
         {"sub": str(user.id)},
-        expires_delta=timedelta(hours=settings.ACCESS_TOKEN_EXPIRE_HOURS),
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_MINUTES),
+    )
+    _, refresh_token = await AuthSessionService.create_session(
+        db,
+        user_id=user.id,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=_request_ip(request),
+    )
+    set_auth_cookies(
+        response,
+        access_token=token,
+        refresh_token=refresh_token,
     )
     return {"access_token": token, "token_type": "bearer"}
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_session(request: Request, response: Response, db: DB):
+    """Rotate refresh token and issue a fresh access token."""
+    refresh_token = request.cookies.get(settings.AUTH_REFRESH_COOKIE_NAME)
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token.")
+
+    session = await AuthSessionService.get_active_session_by_refresh_token(db, refresh_token)
+    if not session:
+        clear_auth_cookies(response)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token.")
+
+    result = await db.execute(select(User).where(User.id == session.user_id))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        await AuthSessionService.revoke_session(db, session)
+        clear_auth_cookies(response)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session.")
+
+    access_token = create_access_token(
+        {"sub": str(user.id)},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_MINUTES),
+    )
+    rotated_refresh = await AuthSessionService.rotate_session(
+        db,
+        session,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=_request_ip(request),
+    )
+    set_auth_cookies(
+        response,
+        access_token=access_token,
+        refresh_token=rotated_refresh,
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/logout")
+async def logout(request: Request, response: Response, db: DB):
+    """Revoke the current refresh session and clear auth cookies."""
+    refresh_token = request.cookies.get(settings.AUTH_REFRESH_COOKIE_NAME)
+    if refresh_token:
+        session = await AuthSessionService.get_active_session_by_refresh_token(db, refresh_token)
+        if session:
+            await AuthSessionService.revoke_session(db, session)
+
+    clear_auth_cookies(response)
+    return {"success": True}
 
 
 @router.get("/me", response_model=UserResponse)

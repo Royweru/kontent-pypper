@@ -7,6 +7,7 @@ and SSE streaming for the live tracker UI.
 import json
 import asyncio
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
@@ -16,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
 from app.core.database import get_db
+from app.core.verification import require_verified_email
 from app.models.user import User
 from app.models.workflow import WorkflowRun, RunEvent, QualityEvaluation
 from app.services.workflow.orchestrator import WorkflowOrchestrator
@@ -34,12 +36,42 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+NODE_SEQUENCE = ["fetch", "score", "draft", "generate_media"]
+NODE_LABELS = {
+    "fetch": "Fetching News Feeds",
+    "score": "Analyzing Subreddits",
+    "draft": "Generating Content",
+    "generate_media": "Creating Videos",
+}
+
 
 def _to_sse_data(payload: dict) -> str:
     """
     Serialize payload safely for SSE. Handles datetime and other non-JSON-native values.
     """
     return f"data: {json.dumps(jsonable_encoder(payload))}\n\n"
+
+
+def _node_progress(node: str | None) -> dict:
+    total = len(NODE_SEQUENCE)
+    if node not in NODE_SEQUENCE:
+        return {
+            "node_index": 0,
+            "node_total": total,
+            "percent": 0.0,
+            "next_node": NODE_SEQUENCE[0] if NODE_SEQUENCE else None,
+            "next_node_label": NODE_LABELS.get(NODE_SEQUENCE[0]) if NODE_SEQUENCE else None,
+        }
+
+    idx = NODE_SEQUENCE.index(node) + 1
+    next_node = NODE_SEQUENCE[idx] if idx < total else None
+    return {
+        "node_index": idx,
+        "node_total": total,
+        "percent": round((idx / total) * 100.0, 2),
+        "next_node": next_node,
+        "next_node_label": NODE_LABELS.get(next_node) if next_node else None,
+    }
 
 
 def _serialize_run_summary(run: WorkflowRun, quality_summary: dict | None = None) -> dict:
@@ -145,161 +177,428 @@ async def get_workflow_run(
     }
 
 
-@router.post("/run")
-async def run_workflow(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Executes the LangGraph automated content generation pipeline
-    and streams back the state changes so the frontend can update live.
+def _build_initial_state(current_user: User, *, tier: str, video_model: str, workflow_policy: dict) -> dict:
+    return {
+        "user_id": current_user.id,
+        "niche": current_user.active_niche or current_user.niche or "Technology and AI",
+        "tier_level": tier,
+        "video_model": video_model,
+        "articles": [],
+        "selected_article": None,
+        "scripts": {},
+        "video_asset": None,
+        "video_source": None,
+        "video_script": None,
+        "credits_consumed": 0,
+        "workflow_policy": workflow_policy,
+        "status": "Starting pipeline...",
+    }
 
-    Credit Gating:
-      1. Check if the user is allowed to run (daily limit for free tier)
-      2. Determine video model based on tier
-      3. Pre-check if credits are sufficient (skip for stock/free)
-      4. Run pipeline
-      5. Consume credits after successful completion
-    """
 
-    # ── Step 1: Daily run limit check ────────────────────────────────
+async def _prepare_manual_run(
+    current_user: User,
+    db: AsyncSession,
+    *,
+    trigger_ref: str,
+) -> tuple[WorkflowRun, dict, str, str, dict]:
+    """Validate policy/limits and create a queued manual run."""
+    require_verified_email(current_user)
+
     try:
         await check_workflow_run_allowed(db, current_user)
-    except DailyRunLimitError as e:
+    except DailyRunLimitError as exc:
         raise HTTPException(
             status_code=429,
             detail={
                 "error": "daily_limit_reached",
-                "message": str(e),
-                "max_runs": e.max_runs,
+                "message": str(exc),
+                "max_runs": exc.max_runs,
                 "upgrade_to": "pro",
             },
         )
 
-    # ── Step 2: Determine video model for this tier ──────────────────
     tier = current_user.tier_level or "free"
     video_model = get_video_model_for_tier(tier)
     workflow_policy = build_workflow_policy(tier_level=tier)
-    stream_delay_seconds = float(workflow_policy.get("event_delay_seconds", 0.5))
 
-    # ── Step 3: Pre-check credit availability (skip for stock) ───────
     if video_model != "stock":
         try:
-            credit_cost = await check_video_credits(db, current_user, model=video_model)
-        except InsufficientCreditsError as e:
-            # Graceful fallback: use stock video if no credits remain
+            await check_video_credits(db, current_user, model=video_model)
+        except InsufficientCreditsError:
             logger.warning(
                 "[Workflow] user_id=%d has no credits for %s. Falling back to stock.",
-                current_user.id, video_model,
+                current_user.id,
+                video_model,
             )
             video_model = "stock"
 
-    # ── Step 4: Increment daily run counter ──────────────────────────
     await increment_daily_runs(db, current_user)
 
-    async def event_generator():
-        """SSE generator that streams pipeline state to the frontend."""
-        # Build initial state with tier/model info
-        initial_state = {
-            "user_id": current_user.id,
-            "niche": current_user.active_niche or current_user.niche or "Technology and AI",
-            "tier_level": tier,
-            "video_model": video_model,
-            "articles": [],
-            "selected_article": None,
-            "scripts": {},
-            "video_asset": None,
-            "video_source": None,
-            "video_script": None,
-            "credits_consumed": 0,
-            "workflow_policy": workflow_policy,
-            "status": "Starting pipeline...",
-        }
+    initial_state = _build_initial_state(
+        current_user,
+        tier=tier,
+        video_model=video_model,
+        workflow_policy=workflow_policy,
+    )
 
-        run = await WorkflowOrchestrator.create_run(
-            db=db,
-            user_id=current_user.id,
-            trigger_type="manual",
-            trigger_ref="api_workflow_run",
-            plan_tier=tier,
-            video_model=video_model,
-            initial_state=initial_state,
+    run = await WorkflowOrchestrator.create_run(
+        db=db,
+        user_id=current_user.id,
+        trigger_type="manual",
+        trigger_ref=trigger_ref,
+        plan_tier=tier,
+        video_model=video_model,
+        initial_state=initial_state,
+    )
+
+    initial_state["run_key"] = run.run_key
+    run.initial_state = jsonable_encoder(initial_state)
+    await db.commit()
+
+    return run, initial_state, tier, video_model, workflow_policy
+
+
+async def _workflow_event_stream(
+    *,
+    db: AsyncSession,
+    run: WorkflowRun,
+    initial_state: dict,
+    current_user: User,
+    tier: str,
+    video_model: str,
+    workflow_policy: dict,
+):
+    """Canonical SSE stream for a queued workflow run."""
+    stream_delay_seconds = float(workflow_policy.get("event_delay_seconds", 0.05))
+    initial_progress = _node_progress(None)
+
+    yield _to_sse_data(
+        {
+            "event_type": "run_started",
+            "run_key": run.run_key,
+            "node": "init",
+            "status": "RUNNING",
+            "message": "Workflow run started.",
+            "state": initial_state,
+            "progress": initial_progress,
+            "ts": datetime.utcnow().isoformat(),
+        }
+    )
+    if initial_progress.get("next_node"):
+        yield _to_sse_data(
+            {
+                "event_type": "node_started",
+                "run_key": run.run_key,
+                "node": initial_progress["next_node"],
+                "status": "IN_PROGRESS",
+                "message": f"Starting {initial_progress.get('next_node_label') or initial_progress['next_node']}.",
+                "progress": initial_progress,
+                "ts": datetime.utcnow().isoformat(),
+            }
         )
 
-        initial_state["run_key"] = run.run_key
-        yield _to_sse_data(initial_state)
+    final_state = initial_state.copy()
 
-        final_state = initial_state.copy()
+    async for stream_event in WorkflowOrchestrator.stream(
+        db=db,
+        run=run,
+        initial_state=initial_state,
+    ):
+        if stream_event.get("event_type") == "run_failed":
+            error_message = stream_event.get("error") or "Workflow execution failed."
+            yield _to_sse_data(
+                {
+                    "event_type": "run_failed",
+                    "run_key": run.run_key,
+                    "node": run.pipeline_node,
+                    "status": "ERROR",
+                    "message": error_message,
+                    "error": error_message,
+                    "state": stream_event.get("state") or final_state,
+                    "progress": _node_progress(run.pipeline_node),
+                    "ts": datetime.utcnow().isoformat(),
+                }
+            )
+            return
 
-        # Stream nodes one-by-one through canonical orchestrator lifecycle
-        async for updated_state in WorkflowOrchestrator.stream(
-            db=db,
-            run=run,
-            initial_state=initial_state,
-        ):
-            if updated_state.get("status") == "ERROR":
-                yield _to_sse_data(updated_state)
-                return
+        node = stream_event.get("node")
+        updated_state = stream_event.get("state") or {}
+        final_state.update(updated_state)
+        progress = _node_progress(node)
+        yield _to_sse_data(
+            {
+                "event_type": "node_completed",
+                "run_key": run.run_key,
+                "node": node,
+                "status": updated_state.get("status") or "NODE_COMPLETED",
+                "message": updated_state.get("status") or "Node completed.",
+                "state": updated_state,
+                "progress": progress,
+                "ts": datetime.utcnow().isoformat(),
+            }
+        )
+        if progress.get("next_node"):
+            yield _to_sse_data(
+                {
+                    "event_type": "node_started",
+                    "run_key": run.run_key,
+                    "node": progress["next_node"],
+                    "status": "IN_PROGRESS",
+                    "message": f"Starting {progress.get('next_node_label') or progress['next_node']}.",
+                    "progress": progress,
+                    "ts": datetime.utcnow().isoformat(),
+                }
+            )
 
-            final_state.update(updated_state)
-            yield _to_sse_data(updated_state)
+        if stream_delay_seconds > 0:
             await asyncio.sleep(stream_delay_seconds)
 
-        # ── Step 5: Post-pipeline credit consumption ─────────────────
-        credits_used = final_state.get("credits_consumed", 0)
-        if credits_used > 0:
-            try:
-                # Re-fetch user to get fresh state
-                from sqlalchemy import select
-                result = await db.execute(select(User).where(User.id == current_user.id))
-                fresh_user = result.scalar_one_or_none()
-                if fresh_user:
-                    await consume_credits(
-                        db=db,
-                        user=fresh_user,
-                        credits=credits_used,
-                        action_type="workflow_run",
-                        model_used=final_state.get("video_source", video_model),
-                        description=f"Workflow run: {final_state.get('selected_article', {}).get('title', 'Unknown')}",
-                    )
-            except Exception as exc:
-                logger.error("[Workflow] Failed to consume credits for user_id=%d: %s", current_user.id, exc)
+    credits_used = int(final_state.get("credits_consumed") or 0)
+    credits_remaining = current_user.video_credits_remaining or 0
 
+    if credits_used > 0:
         try:
-            await WorkflowOrchestrator.log_event(
-                db=db,
-                run_id=run.id,
-                event_type="cost_summary",
-                node=final_state.get("status"),
-                payload={
-                    "trigger_type": "manual",
-                    "plan_tier": tier,
-                    "video_model_requested": initial_state.get("video_model"),
-                    "video_model_used": final_state.get("video_source", video_model),
-                    "credits_consumed": credits_used,
-                    "billing_unit": "credits",
-                    "duration_seconds": run.duration_seconds,
-                    "quality_summary": final_state.get("quality_summary"),
-                },
-            )
+            result = await db.execute(select(User).where(User.id == current_user.id))
+            fresh_user = result.scalar_one_or_none()
+            if fresh_user:
+                await consume_credits(
+                    db=db,
+                    user=fresh_user,
+                    credits=credits_used,
+                    action_type="workflow_run",
+                    model_used=final_state.get("video_source", video_model),
+                    description=(
+                        f"Workflow run: "
+                        f"{final_state.get('selected_article', {}).get('title', 'Unknown')}"
+                    ),
+                )
+                credits_remaining = fresh_user.video_credits_remaining or 0
         except Exception as exc:
-            logger.warning("[Workflow] Failed to emit cost_summary for run_key=%s: %s", run.run_key, exc)
+            logger.error(
+                "[Workflow] Failed to consume credits for user_id=%d: %s",
+                current_user.id,
+                exc,
+            )
 
-        # Send final done signal with credit info
-        done_payload = {
-            "status": "DONE",
+    try:
+        await WorkflowOrchestrator.log_event(
+            db=db,
+            run_id=run.id,
+            event_type="cost_summary",
+            node=run.pipeline_node,
+            payload={
+                "trigger_type": "manual",
+                "plan_tier": tier,
+                "video_model_requested": initial_state.get("video_model"),
+                "video_model_used": final_state.get("video_source", video_model),
+                "credits_consumed": credits_used,
+                "billing_unit": "credits",
+                "duration_seconds": run.duration_seconds,
+                "quality_summary": final_state.get("quality_summary"),
+            },
+        )
+    except Exception as exc:
+        logger.warning(
+            "[Workflow] Failed to emit cost_summary for run_key=%s: %s",
+            run.run_key,
+            exc,
+        )
+
+    yield _to_sse_data(
+        {
+            "event_type": "run_completed",
             "run_key": run.run_key,
+            "node": run.pipeline_node,
+            "status": "DONE",
+            "message": "Workflow complete.",
             "credits_consumed": credits_used,
-            "credits_remaining": (current_user.video_credits_remaining or 0) - credits_used,
+            "credits_remaining": credits_remaining,
             "tier": tier,
             "video_model": video_model,
             "review_required": workflow_policy.get("require_review", False),
             "quality_summary": final_state.get("quality_summary") or {},
             "quality_passed": bool(final_state.get("quality_passed", True)),
+            "scripts": final_state.get("scripts") or {},
+            "selected_article": final_state.get("selected_article"),
+            "video_asset": final_state.get("video_asset"),
+            "video_script": final_state.get("video_script"),
+            "final_state": final_state,
+            "progress": {
+                "node_index": len(NODE_SEQUENCE),
+                "node_total": len(NODE_SEQUENCE),
+                "percent": 100.0,
+                "next_node": None,
+                "next_node_label": None,
+            },
+            "ts": datetime.utcnow().isoformat(),
         }
-        yield _to_sse_data(done_payload)
+    )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@router.post("/runs")
+async def create_workflow_run(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Canonical manual trigger endpoint. Creates a queued run and returns run metadata."""
+    run, _initial_state, _tier, _video_model, _workflow_policy = await _prepare_manual_run(
+        current_user,
+        db,
+        trigger_ref="api_workflow_runs_create",
+    )
+    logger.info(
+        "[WorkflowAPI] Created run run_key=%s user_id=%d tier=%s model=%s",
+        run.run_key,
+        current_user.id,
+        _tier,
+        _video_model,
+    )
+
+    return {
+        "run_key": run.run_key,
+        "status": run.status,
+        "stream_url": f"/api/v1/workflow/runs/{run.run_key}/stream",
+        "run": _serialize_run_summary(run),
+    }
+
+
+@router.get("/runs/{run_key}/stream")
+async def stream_workflow_run(
+    run_key: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Canonical SSE stream endpoint for an existing queued workflow run."""
+    run = (await db.execute(
+        select(WorkflowRun).where(
+            WorkflowRun.run_key == run_key,
+            WorkflowRun.user_id == current_user.id,
+        )
+    )).scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found.")
+
+    logger.info(
+        "[WorkflowAPI] Stream requested run_key=%s user_id=%d status=%s",
+        run.run_key,
+        current_user.id,
+        run.status,
+    )
+
+    if run.status in ("completed", "failed"):
+        async def finalized_generator():
+            final_state = run.final_state if isinstance(run.final_state, dict) else {}
+            event_type = "run_completed" if run.status == "completed" else "run_failed"
+            message = "Workflow already completed." if run.status == "completed" else (run.error_message or "Workflow failed.")
+            node = run.pipeline_node
+            progress = (
+                {
+                    "node_index": len(NODE_SEQUENCE),
+                    "node_total": len(NODE_SEQUENCE),
+                    "percent": 100.0,
+                    "next_node": None,
+                    "next_node_label": None,
+                }
+                if run.status == "completed"
+                else _node_progress(node)
+            )
+            yield _to_sse_data(
+                {
+                    "event_type": event_type,
+                    "run_key": run.run_key,
+                    "node": node,
+                    "status": "DONE" if run.status == "completed" else "ERROR",
+                    "message": message,
+                    "scripts": final_state.get("scripts") or {},
+                    "selected_article": final_state.get("selected_article"),
+                    "video_asset": final_state.get("video_asset"),
+                    "video_script": final_state.get("video_script"),
+                    "quality_summary": final_state.get("quality_summary") or {},
+                    "quality_passed": bool(final_state.get("quality_passed", run.status == "completed")),
+                    "final_state": final_state,
+                    "progress": progress,
+                    "ts": datetime.utcnow().isoformat(),
+                }
+            )
+
+        return StreamingResponse(finalized_generator(), media_type="text/event-stream")
+
+    if run.status == "running":
+        raise HTTPException(
+            status_code=409,
+            detail="Run is already streaming from another client.",
+        )
+
+    initial_state = run.initial_state if isinstance(run.initial_state, dict) else {}
+    initial_state["run_key"] = run.run_key
+    tier = run.plan_tier or current_user.tier_level or "free"
+    video_model = run.video_model or get_video_model_for_tier(tier)
+    workflow_policy = initial_state.get("workflow_policy") or build_workflow_policy(tier_level=tier)
+
+    return StreamingResponse(
+        _workflow_event_stream(
+            db=db,
+            run=run,
+            initial_state=initial_state,
+            current_user=current_user,
+            tier=tier,
+            video_model=video_model,
+            workflow_policy=workflow_policy,
+        ),
+        media_type="text/event-stream",
+    )
+
+
+@router.post("/run")
+async def run_workflow_legacy_post(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Backward-compatible one-shot stream endpoint (deprecated)."""
+    run, initial_state, tier, video_model, workflow_policy = await _prepare_manual_run(
+        current_user,
+        db,
+        trigger_ref="api_workflow_run_legacy_post",
+    )
+
+    return StreamingResponse(
+        _workflow_event_stream(
+            db=db,
+            run=run,
+            initial_state=initial_state,
+            current_user=current_user,
+            tier=tier,
+            video_model=video_model,
+            workflow_policy=workflow_policy,
+        ),
+        media_type="text/event-stream",
+    )
+
+
+@router.get("/run")
+async def run_workflow_legacy_get(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Backward-compatible GET stream endpoint for older EventSource clients (deprecated)."""
+    run, initial_state, tier, video_model, workflow_policy = await _prepare_manual_run(
+        current_user,
+        db,
+        trigger_ref="api_workflow_run_legacy_get",
+    )
+
+    return StreamingResponse(
+        _workflow_event_stream(
+            db=db,
+            run=run,
+            initial_state=initial_state,
+            current_user=current_user,
+            tier=tier,
+            video_model=video_model,
+            workflow_policy=workflow_policy,
+        ),
+        media_type="text/event-stream",
+    )
 
 
 @router.get("/credits/status")
@@ -329,6 +628,8 @@ async def regenerate_video(
     Max: 1 credit (Kling) or 3 credits (Runway/Sora)
     Free: stock only (0 credits)
     """
+    require_verified_email(current_user)
+
     tier = current_user.tier_level or "free"
     video_model = get_video_model_for_tier(tier)
 
