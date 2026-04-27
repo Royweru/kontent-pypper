@@ -50,13 +50,26 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        connect_args={"ssl": "require"},
+        connect_args={
+            "ssl": "require",
+            "timeout": 45,
+            "command_timeout": 45,
+            "statement_cache_size": 0,
+        },
     )
 
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-
-    await connectable.dispose()
+    try:
+        for attempt in range(3):
+            try:
+                async with connectable.connect() as connection:
+                    await connection.run_sync(do_run_migrations)
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(1.5 * (attempt + 1))
+    finally:
+        await connectable.dispose()
 
 
 def run_migrations_online() -> None:

@@ -9,6 +9,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +33,13 @@ from app.services.credit_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _to_sse_data(payload: dict) -> str:
+    """
+    Serialize payload safely for SSE. Handles datetime and other non-JSON-native values.
+    """
+    return f"data: {json.dumps(jsonable_encoder(payload))}\n\n"
 
 
 def _serialize_run_summary(run: WorkflowRun, quality_summary: dict | None = None) -> dict:
@@ -219,7 +227,7 @@ async def run_workflow(
         )
 
         initial_state["run_key"] = run.run_key
-        yield f"data: {json.dumps(initial_state)}\n\n"
+        yield _to_sse_data(initial_state)
 
         final_state = initial_state.copy()
 
@@ -230,11 +238,11 @@ async def run_workflow(
             initial_state=initial_state,
         ):
             if updated_state.get("status") == "ERROR":
-                yield f"data: {json.dumps(updated_state)}\n\n"
+                yield _to_sse_data(updated_state)
                 return
 
             final_state.update(updated_state)
-            yield f"data: {json.dumps(updated_state)}\n\n"
+            yield _to_sse_data(updated_state)
             await asyncio.sleep(stream_delay_seconds)
 
         # ── Step 5: Post-pipeline credit consumption ─────────────────
@@ -289,7 +297,7 @@ async def run_workflow(
             "quality_summary": final_state.get("quality_summary") or {},
             "quality_passed": bool(final_state.get("quality_passed", True)),
         }
-        yield f"data: {json.dumps(done_payload)}\n\n"
+        yield _to_sse_data(done_payload)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

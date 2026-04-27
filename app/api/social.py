@@ -5,7 +5,7 @@ Handles OAuth initialization, callbacks, and platform connections listing.
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
-from sqlalchemy import delete
+from sqlalchemy import delete, func
 from app.core.deps import CurrentUser, DB
 from app.services.oauth_service import OAuthService
 from app.services.social_service import SocialService
@@ -137,10 +137,26 @@ async def disconnect_platform(
     db: DB,
 ):
     """Remove a social platform connection for the current user."""
+    platform_norm = (platform or "").strip().lower()
+    if not platform_norm:
+        raise HTTPException(status_code=400, detail="Platform is required.")
+
     stmt = delete(SocialConnection).where(
         SocialConnection.user_id == user.id,
-        SocialConnection.platform == platform,
+        func.lower(SocialConnection.platform) == platform_norm,
     )
-    await db.execute(stmt)
+    result = await db.execute(stmt)
     await db.commit()
-    return {"success": True, "message": f"Disconnected {platform}"}
+
+    disconnected = int(getattr(result, "rowcount", 0) or 0)
+    if disconnected == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No active connection found for {platform_norm}.",
+        )
+
+    return {
+        "success": True,
+        "message": f"Disconnected {platform_norm}.",
+        "disconnected": disconnected,
+    }

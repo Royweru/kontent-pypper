@@ -16,25 +16,42 @@ load_dotenv()
 
 
 def _build_async_url() -> str:
-    """Convert a standard DATABASE_URL into asyncpg format."""
-    raw = os.getenv("DATABASE_URL", "is_empty")
+    """Convert DATABASE_URL to asyncpg format while preserving query params."""
+    raw = os.getenv("DATABASE_URL", "").strip()
     if not raw:
         raise ValueError("DATABASE_URL environment variable is not set")
-    base = raw.split("?")[0]
 
-    if base.startswith("postgresql://"):
-        return base.replace("postgresql://", "postgresql+asyncpg://", 1)
-    return base
+    # Normalize old postgres:// URLs and keep full suffix/query untouched.
+    if raw.startswith("postgres://"):
+        raw = raw.replace("postgres://", "postgresql://", 1)
+
+    if raw.startswith("postgresql+asyncpg://"):
+        return raw
+    if raw.startswith("postgresql://"):
+        return raw.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return raw
 
 
 engine = create_async_engine(
     _build_async_url(),
     echo=False,
     pool_pre_ping=True,
-    pool_recycle=180,  # Lower - Neon terminates idle connections faster
-    pool_size=20,  # Smaller pool for Neon free tier
-    max_overflow=10,
-    pool_timeout=10,
+    pool_use_lifo=True,
+    pool_recycle=120,
+    pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "2")),
+    pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "30")),
+    connect_args={
+        # Neon/managed Postgres frequently needs explicit SSL + larger handshake windows.
+        "ssl": "require",
+        "timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "45")),
+        "command_timeout": int(os.getenv("DB_COMMAND_TIMEOUT", "45")),
+        "statement_cache_size": 0,
+        "server_settings": {
+            "application_name": "kontentpyper",
+            "jit": "off",
+        },
+    },
 )
 
 AsyncSessionLocal = async_sessionmaker(

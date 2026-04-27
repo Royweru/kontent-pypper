@@ -10,7 +10,7 @@ from datetime import datetime
 
 class UserRegister(BaseModel):
     email: EmailStr
-    username: str
+    username: str 
     password: str
 
 

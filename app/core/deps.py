@@ -3,18 +3,47 @@ KontentPyper - Shared FastAPI Dependencies
 get_db and get_current_user used across all protected routes.
 """
 
+import asyncio
+import logging
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models.user import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+logger = logging.getLogger(__name__)
+
+
+def _is_transient_db_error(exc: Exception) -> bool:
+    """Best-effort detector for short-lived DB/network failures."""
+    if isinstance(
+        exc,
+        (
+            OperationalError,
+            InterfaceError,
+            DBAPIError,
+            ConnectionResetError,
+            TimeoutError,
+            OSError,
+        ),
+    ):
+        return True
+    message = str(exc).lower()
+    transient_tokens = (
+        "winerror 10054",
+        "winerror 64",
+        "connection reset",
+        "temporarily unavailable",
+        "timed out",
+    )
+    return any(token in message for token in transient_tokens)
 
 
 async def get_current_user(
@@ -39,8 +68,28 @@ async def get_current_user(
     if user_id is None:
         raise credentials_exc
 
-    result = await db.execute(select(User).where(User.id == int(user_id)))
-    user = result.scalar_one_or_none()
+    user = None
+    for attempt in range(3):
+        try:
+            result = await db.execute(select(User).where(User.id == int(user_id)))
+            user = result.scalar_one_or_none()
+            break
+        except Exception as exc:
+            if _is_transient_db_error(exc) and attempt < 2:
+                backoff = 0.4 * (attempt + 1)
+                logger.warning(
+                    "[Auth] transient DB error while loading current user (attempt %d/3): %s",
+                    attempt + 1,
+                    exc,
+                )
+                await asyncio.sleep(backoff)
+                continue
+            if _is_transient_db_error(exc):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Database temporarily unavailable. Please retry.",
+                )
+            raise
 
     if user is None or not user.is_active:
         raise credentials_exc
