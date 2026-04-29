@@ -43,8 +43,10 @@ async def initiate_oauth(platform: str, user: CurrentUser):
     try:
         auth_url = await OAuthService.initiate_oauth(user.id, platform)
         return {"auth_url": auth_url}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=502, detail=f"OAuth initialization failed: {str(e)}")
 
 # ── OAuth callback ────────────────────────────────────────────────
 

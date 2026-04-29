@@ -78,6 +78,17 @@ class OAuthService:
         """ OAuth 1.0a (Twitter) request token fetching without heavy libraries."""
         import uuid
         import hmac
+        
+        consumer_key = (config.get("consumer_key") or "").strip()
+        consumer_secret = (config.get("consumer_secret") or "").strip()
+        if not consumer_key or not consumer_secret:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Twitter OAuth is not configured: TWITTER_API_KEY / "
+                    "TWITTER_API_SECRET is missing."
+                ),
+            )
 
         # 1. Build auth headers for request token
         nonce = uuid.uuid4().hex
@@ -85,7 +96,7 @@ class OAuthService:
         
         params = {
             "oauth_callback": config["callback_uri"],
-            "oauth_consumer_key": config["consumer_key"],
+            "oauth_consumer_key": consumer_key,
             "oauth_nonce": nonce,
             "oauth_signature_method": "HMAC-SHA1",
             "oauth_timestamp": timestamp,
@@ -96,7 +107,7 @@ class OAuthService:
         sorted_params = "&".join(f"{quote(k, safe='')}={quote(v, safe='')}" for k, v in sorted(params.items()))
         base = f"POST&{quote(config['request_token_url'], safe='')}&{quote(sorted_params, safe='')}"
         
-        signing_key = f"{quote(config['consumer_secret'], safe='')}&"
+        signing_key = f"{quote(consumer_secret, safe='')}&"
         digest = hmac.new(signing_key.encode(), base.encode(), hashlib.sha1).digest()
         params["oauth_signature"] = base64.b64encode(digest).decode()
 
@@ -107,7 +118,21 @@ class OAuthService:
             resp = await client.post(config["request_token_url"], headers={"Authorization": auth_header})
             
         if resp.status_code != 200:
-            raise HTTPException(500, "Failed to get OAuth1 request token")
+            body = (resp.text or "").strip().replace("\n", " ")
+            body = body[:500] if body else "<empty response body>"
+            logger.error(
+                "[OAuth] Twitter request-token failed status=%s callback=%s body=%s",
+                resp.status_code,
+                config.get("callback_uri"),
+                body,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Twitter request-token failed ({resp.status_code}). "
+                    f"Response: {body}"
+                ),
+            )
 
         # Parse token string like "oauth_token=XYZ&oauth_token_secret=ABC..."
         data = dict(parse_qsl(resp.text))

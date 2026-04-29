@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import declarative_base
 from dotenv import load_dotenv
 import os
+from urllib.parse import parse_qs, urlparse
 
 load_dotenv()
 
@@ -32,18 +33,47 @@ def _build_async_url() -> str:
     return raw
 
 
-engine = create_async_engine(
-    _build_async_url(),
-    echo=False,
-    pool_pre_ping=True,
-    pool_use_lifo=True,
-    pool_recycle=120,
-    pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
-    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "2")),
-    pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "30")),
-    connect_args={
-        # Neon/managed Postgres frequently needs explicit SSL + larger handshake windows.
-        "ssl": "require",
+def _as_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _default_ssl_mode(database_url: str) -> str:
+    host = (urlparse(database_url).hostname or "").lower()
+    if host.endswith(".neon.tech"):
+        return "require"
+    return "prefer"
+
+
+def _build_connect_args(database_url: str) -> dict:
+    parsed = urlparse(database_url)
+    query = parse_qs(parsed.query)
+
+    ssl_mode = (
+        os.getenv("DB_SSL_MODE")
+        or query.get("ssl", [None])[0]
+        or query.get("sslmode", [None])[0]
+        or _default_ssl_mode(database_url)
+    )
+    ssl_mode = (ssl_mode or "prefer").strip().lower()
+    allowed_ssl_modes = {
+        "disable",
+        "allow",
+        "prefer",
+        "require",
+        "verify-ca",
+        "verify-full",
+    }
+    if ssl_mode not in allowed_ssl_modes:
+        raise ValueError(
+            "Invalid DB_SSL_MODE. Use one of: disable, allow, prefer, "
+            "require, verify-ca, verify-full"
+        )
+
+    connect_args = {
+        "ssl": ssl_mode,
         "timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "45")),
         "command_timeout": int(os.getenv("DB_COMMAND_TIMEOUT", "45")),
         "statement_cache_size": 0,
@@ -51,7 +81,28 @@ engine = create_async_engine(
             "application_name": "kontentpyper",
             "jit": "off",
         },
-    },
+    }
+
+    # Some networks/proxies reset STARTTLS upgrades; direct TLS can avoid that.
+    if _as_bool("DB_DIRECT_TLS", default=False):
+        connect_args["direct_tls"] = True
+
+    return connect_args
+
+
+ASYNC_DATABASE_URL = _build_async_url()
+
+
+engine = create_async_engine(
+    ASYNC_DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_use_lifo=True,
+    pool_recycle=120,
+    pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "2")),
+    pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "30")),
+    connect_args=_build_connect_args(ASYNC_DATABASE_URL),
 )
 
 AsyncSessionLocal = async_sessionmaker(
