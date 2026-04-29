@@ -22,6 +22,7 @@ from app.models.user import User
 from app.models.workflow import WorkflowRun, RunEvent, QualityEvaluation
 from app.services.workflow.orchestrator import WorkflowOrchestrator
 from app.services.workflow.policy import build_workflow_policy
+from app.services.workflow.billing import determine_billable_credits
 from app.services.credit_service import (
     check_workflow_run_allowed,
     increment_daily_runs,
@@ -354,9 +355,10 @@ async def _workflow_event_stream(
             await asyncio.sleep(stream_delay_seconds)
 
     credits_used = int(final_state.get("credits_consumed") or 0)
+    billable_credits, billing_reason = determine_billable_credits(final_state, video_model)
     credits_remaining = current_user.video_credits_remaining or 0
 
-    if credits_used > 0:
+    if billable_credits > 0:
         try:
             result = await db.execute(select(User).where(User.id == current_user.id))
             fresh_user = result.scalar_one_or_none()
@@ -364,7 +366,7 @@ async def _workflow_event_stream(
                 await consume_credits(
                     db=db,
                     user=fresh_user,
-                    credits=credits_used,
+                    credits=billable_credits,
                     action_type="workflow_run",
                     model_used=final_state.get("video_source", video_model),
                     description=(
@@ -391,7 +393,9 @@ async def _workflow_event_stream(
                 "plan_tier": tier,
                 "video_model_requested": initial_state.get("video_model"),
                 "video_model_used": final_state.get("video_source", video_model),
-                "credits_consumed": credits_used,
+                "credits_requested": credits_used,
+                "credits_consumed": billable_credits,
+                "billing_decision_reason": billing_reason,
                 "billing_unit": "credits",
                 "duration_seconds": run.duration_seconds,
                 "quality_summary": final_state.get("quality_summary"),
@@ -411,7 +415,9 @@ async def _workflow_event_stream(
             "node": run.pipeline_node,
             "status": "DONE",
             "message": "Workflow complete.",
-            "credits_consumed": credits_used,
+            "credits_requested": credits_used,
+            "credits_consumed": billable_credits,
+            "billing_decision_reason": billing_reason,
             "credits_remaining": credits_remaining,
             "tier": tier,
             "video_model": video_model,
@@ -638,38 +644,15 @@ async def regenerate_video(
     if requested_model and tier == "max" and requested_model in ("runway", "sora"):
         video_model = requested_model
 
-    # Check credits
-    try:
-        credit_cost = await check_video_credits(db, current_user, model=video_model)
-    except InsufficientCreditsError as e:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "error": "insufficient_credits",
-                "message": str(e),
-                "required": e.required,
-                "available": e.available,
-                "tier": e.tier,
-            },
-        )
-
-    # Consume credits
-    if credit_cost > 0:
-        await consume_credits(
-            db=db,
-            user=current_user,
-            credits=credit_cost,
-            action_type="regenerate",
-            model_used=video_model,
-            description=f"Video regeneration via HITL (model={video_model})",
-        )
-
     # TODO: Actually call the video generation API here
     # For now, return a placeholder video URL
+    credit_cost = 0
     return {
         "status": "success",
         "video_url": "https://www.w3schools.com/html/mov_bbb.mp4",
         "model_used": video_model,
+        "credits_requested": 0,
         "credits_consumed": credit_cost,
+        "billing_decision_reason": "placeholder_asset_not_billable",
         "credits_remaining": current_user.video_credits_remaining or 0,
     }

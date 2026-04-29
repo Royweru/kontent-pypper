@@ -1226,16 +1226,25 @@ body.sidebar-open .sidebar-overlay {
 
 /* ── Phase 6: Studio Empty State Redesign ──────────────────── */
 #page-studio {
-  position: absolute;
-  top: 0; left: 0; width: 100%; min-height: 100vh;
+  position: relative;
+  min-height: calc(100vh - var(--topbar-h));
   background: var(--base);
-  z-index: 150; /* Covers the existing main structure and topbar */
-  padding: 0;
+  padding: 24px 36px 18px;
+  overflow: hidden;
   display: none; /* Controlled by .active */
   flex-direction: column;
+  align-items: stretch;
 }
 #page-studio.active {
   display: flex !important;
+}
+
+.studio-page-header {
+  margin-bottom: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  flex: 0 0 auto;
 }
 
   /*── Studio Empty State ──────────────────────────*/
@@ -1245,11 +1254,23 @@ body.sidebar-open .sidebar-overlay {
     align-items: center;
     justify-content: center;
     text-align: center;
-    min-height: calc(100vh - var(--topbar-h) - 120px);
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
     position: relative;
-    padding: 40px 24px;
-    max-width: 480px;
+    padding: 32px 24px 24px;
+    margin: 0;
+  }
+
+  .studio-empty-content {
+    width: min(100%, 480px);
     margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 1;
   }
 
   /*Ambient background orb*/
@@ -1323,11 +1344,15 @@ body.sidebar-open .sidebar-overlay {
     padding: 13px 32px;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 10px;
     width: auto;
     font-weight: 700;
     letter-spacing: 0.02em;
     margin-top: 0;
+    margin-left: auto;
+    margin-right: auto;
+    align-self: center;
     background: var(--accent);
     color: var(--deep);
     border: none;
@@ -1378,12 +1403,13 @@ body.sidebar-open .sidebar-overlay {
   }
 
 .studio-bottom-bar {
+  flex: 0 0 auto;
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 12px;
-  padding: 24px;
-  margin-bottom: 16px;
+  padding: 12px 24px 20px;
+  margin-bottom: 0;
 }
 .studio-system-pill {
   display: flex;
@@ -1420,6 +1446,44 @@ body.sidebar-open .sidebar-overlay {
   color: var(--border-hi);
   line-height: 1.4;
   letter-spacing: 0.15em;
+  pointer-events: none;
+}
+@media (max-width: 960px) {
+  #page-studio {
+    padding: 22px 20px 16px;
+  }
+
+  .studio-empty-state {
+    padding: 24px 16px 18px;
+  }
+
+  .studio-hints {
+    gap: 12px;
+  }
+
+  .studio-bottom-bar {
+    padding: 8px 16px 16px;
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 760px) {
+  #page-studio {
+    padding: 16px 14px 12px;
+  }
+
+  .studio-empty-heading {
+    font-size: 20px;
+  }
+
+  .studio-empty-sub {
+    margin-bottom: 24px;
+  }
+
+  .studio-watermark {
+    display: none;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -2436,4 +2500,5 @@ body.sidebar-open .sidebar-overlay {
   font-size: 9px;
   color: var(--text-muted);
 }
+
 

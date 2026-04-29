@@ -110,6 +110,8 @@ def _request_ip(request: Request) -> str | None:
 def _google_redirect_uri(request: Request) -> str:
     if settings.GOOGLE_AUTH_REDIRECT_URI:
         return settings.GOOGLE_AUTH_REDIRECT_URI
+    if settings.FRONTEND_URL:
+        return f"{settings.FRONTEND_URL.rstrip('/')}/api/v1/auth/google/callback"
     return str(request.url_for("google_auth_callback"))
 
 

@@ -4,7 +4,7 @@ OAuth 2.0 and API integration for LinkedIn (ugcPosts via v2 API).
 """
 
 import logging
-import asyncio
+import httpx
 from typing import Optional
 
 from app.services.platforms.base_platform import BasePlatformService, PlatformResult

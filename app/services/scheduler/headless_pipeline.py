@@ -17,6 +17,7 @@ from app.models.content import AssetLibrary
 from app.models.schedule import ScheduledJob
 from app.services.workflow.orchestrator import WorkflowOrchestrator
 from app.services.workflow.policy import build_workflow_policy
+from app.services.workflow.billing import determine_billable_credits
 from app.services.credit_service import (
     check_workflow_run_allowed,
     increment_daily_runs,
@@ -140,8 +141,9 @@ async def run_headless_pipeline(user_id: int):
             return
 
         # ── Consume credits ───────────────────────────────────────────
-        credits_used = final_state.get("credits_consumed", 0)
-        if credits_used > 0:
+        credits_used = int(final_state.get("credits_consumed", 0) or 0)
+        billable_credits, billing_reason = determine_billable_credits(final_state, video_model)
+        if billable_credits > 0:
             try:
                 result = await db.execute(select(User).where(User.id == user_id))
                 fresh_user = result.scalar_one_or_none()
@@ -149,7 +151,7 @@ async def run_headless_pipeline(user_id: int):
                     await consume_credits(
                         db=db,
                         user=fresh_user,
-                        credits=credits_used,
+                        credits=billable_credits,
                         action_type="workflow_run",
                         model_used=final_state.get("video_source", video_model),
                         description=f"Headless cron run: {workflow_run.run_key}",
@@ -168,7 +170,9 @@ async def run_headless_pipeline(user_id: int):
                     "plan_tier": tier,
                     "video_model_requested": initial_state.get("video_model"),
                     "video_model_used": final_state.get("video_source", video_model),
-                    "credits_consumed": credits_used,
+                    "credits_requested": credits_used,
+                    "credits_consumed": billable_credits,
+                    "billing_decision_reason": billing_reason,
                     "billing_unit": "credits",
                     "duration_seconds": workflow_run.duration_seconds,
                     "quality_summary": final_state.get("quality_summary"),
@@ -198,7 +202,7 @@ async def run_headless_pipeline(user_id: int):
             source_article_title=article.get("title"),
             source_article_url=article.get("url"),
             video_model_used=final_state.get("video_source", video_model),
-            credits_consumed=credits_used,
+            credits_consumed=billable_credits,
             workflow_run_id=workflow_run.run_key,
             platforms_used=list(scripts.keys()) if scripts else [],
         )

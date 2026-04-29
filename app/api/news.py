@@ -1,7 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+import asyncio
+import ipaddress
+import re
+import socket
+import time
+from collections import defaultdict, deque
+from datetime import datetime
+from time import mktime
+from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin, urlparse
+
+import feedparser
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import List, Dict, Any, Optional
 
 from pydantic import BaseModel
 from sqlalchemy import delete
@@ -14,6 +26,143 @@ from app.models.content import ContentSource
 from sqlalchemy import or_
 
 router = APIRouter()
+
+
+PREVIEW_MAX_REQUESTS_PER_MINUTE = 45
+PREVIEW_RATE_WINDOW_SECONDS = 60
+PREVIEW_MAX_REDIRECTS = 3
+PREVIEW_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
+PREVIEW_TIMEOUT = httpx.Timeout(8.0, connect=3.0)
+
+_preview_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
+
+_BLOCKED_HOSTNAMES = {
+    "localhost",
+    "localhost.localdomain",
+    "0.0.0.0",
+    "::",
+    "::1",
+}
+_BLOCKED_HOST_SUFFIXES = (
+    ".local",
+    ".internal",
+    ".lan",
+    ".home",
+)
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _enforce_preview_rate_limit(request: Request) -> None:
+    now = time.monotonic()
+    bucket = _preview_rate_buckets[_client_ip(request)]
+    cutoff = now - PREVIEW_RATE_WINDOW_SECONDS
+    while bucket and bucket[0] < cutoff:
+        bucket.popleft()
+    if len(bucket) >= PREVIEW_MAX_REQUESTS_PER_MINUTE:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many preview requests. Please retry shortly.",
+        )
+    bucket.append(now)
+
+
+def _is_disallowed_ip(ip_value: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_value)
+    except ValueError:
+        return True
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _validate_preview_url_shape(url: str) -> str:
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="Only http/https feed URLs are allowed.")
+    if not parsed.hostname:
+        raise HTTPException(status_code=400, detail="Feed URL is missing a hostname.")
+
+    host = parsed.hostname.lower().strip(".")
+    if host in _BLOCKED_HOSTNAMES or any(host.endswith(suffix) for suffix in _BLOCKED_HOST_SUFFIXES):
+        raise HTTPException(status_code=400, detail="Host is not allowed for preview.")
+    return host
+
+
+async def _resolve_public_host(host: str) -> None:
+    try:
+        infos = await asyncio.to_thread(socket.getaddrinfo, host, None)
+    except socket.gaierror as exc:
+        raise HTTPException(status_code=400, detail=f"Could not resolve host '{host}'.") from exc
+
+    addresses = {info[4][0] for info in infos if info and len(info) >= 5 and info[4]}
+    if not addresses:
+        raise HTTPException(status_code=400, detail="Host did not resolve to any address.")
+
+    for ip_value in addresses:
+        if _is_disallowed_ip(ip_value):
+            raise HTTPException(status_code=400, detail="Preview URL resolved to a non-public address.")
+
+
+async def _guard_preview_url(url: str) -> None:
+    host = _validate_preview_url_shape(url)
+    await _resolve_public_host(host)
+
+
+async def _fetch_feed_document(url: str) -> tuple[bytes, str]:
+    current_url = url
+    headers = {"User-Agent": "KontentPyper/1.0 (+feed-preview)"}
+
+    async with httpx.AsyncClient(timeout=PREVIEW_TIMEOUT, follow_redirects=False) as client:
+        for _ in range(PREVIEW_MAX_REDIRECTS + 1):
+            await _guard_preview_url(current_url)
+            try:
+                async with client.stream("GET", current_url, headers=headers) as resp:
+                    status = resp.status_code
+                    if 300 <= status < 400:
+                        location = resp.headers.get("location")
+                        if not location:
+                            raise HTTPException(status_code=502, detail="Feed provider returned an invalid redirect.")
+                        current_url = urljoin(current_url, location)
+                        continue
+                    if status >= 400:
+                        raise HTTPException(
+                            status_code=502,
+                            detail=f"Feed provider returned HTTP {status}.",
+                        )
+
+                    body_chunks: list[bytes] = []
+                    total = 0
+                    async for chunk in resp.aiter_bytes():
+                        total += len(chunk)
+                        if total > PREVIEW_MAX_BYTES:
+                            raise HTTPException(
+                                status_code=413,
+                                detail="Feed preview payload is too large.",
+                            )
+                        body_chunks.append(chunk)
+                    return b"".join(body_chunks), current_url
+            except HTTPException:
+                raise
+            except httpx.TimeoutException as exc:
+                raise HTTPException(status_code=504, detail="Feed preview request timed out.") from exc
+            except httpx.HTTPError as exc:
+                raise HTTPException(status_code=502, detail=f"Failed to fetch feed: {exc}") from exc
+
+    raise HTTPException(status_code=400, detail="Too many redirects while fetching feed preview.")
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +377,7 @@ async def get_feed_catalogue(
 
 @router.get("/feed/preview")
 async def preview_rss_feed(
+    request: Request,
     url: str = Query(..., description="RSS feed URL to preview"),
 ):
     """
@@ -243,15 +393,9 @@ async def preview_rss_feed(
     Returns a list of article cards:
       [{title, url, snippet, image_url, published_date, source_url}]
     """
-    import re
-    import feedparser
-    from time import mktime
-    from datetime import datetime
-
-    try:
-        feed = feedparser.parse(url)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch feed: {exc}")
+    _enforce_preview_rate_limit(request)
+    feed_bytes, resolved_url = await _fetch_feed_document(url)
+    feed = feedparser.parse(feed_bytes)
 
     if not feed.entries:
         return []
@@ -278,7 +422,7 @@ async def preview_rss_feed(
             "snippet":        snippet,
             "image_url":      image_url,
             "published_date": pub_date,
-            "source_url":     url,
+            "source_url":     resolved_url,
         })
 
     return articles
@@ -286,6 +430,7 @@ async def preview_rss_feed(
 
 @router.get("/subreddit/preview")
 async def preview_subreddit(
+    request: Request,
     sub: str = Query(..., description="Subreddit name WITHOUT r/ prefix"),
     limit: int = Query(10, ge=1, le=25),
 ):
@@ -302,7 +447,7 @@ async def preview_subreddit(
       [{title, url, snippet, image_url, published_date, score, subreddit}]
     """
     from app.services.ingest.reddit_fetcher import get_reddit_client
-    from datetime import datetime
+    _enforce_preview_rate_limit(request)
 
     reddit = get_reddit_client()
     if not reddit:
@@ -336,4 +481,3 @@ async def preview_subreddit(
         raise HTTPException(status_code=502, detail=f"Failed to fetch r/{sub}: {exc}")
 
     return posts
-

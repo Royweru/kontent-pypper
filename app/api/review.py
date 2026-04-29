@@ -15,8 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
 from app.core.database import get_db
+from app.core.verification import require_verified_email
 from app.models.user import User
 from app.models.content import AssetLibrary
+from app.models.post import Post, PostResult
+from app.services.social_service import SocialService
 
 logger = logging.getLogger(__name__)
 
@@ -137,16 +140,118 @@ async def perform_review_action(
     action = payload.action.lower()
 
     if action == "approve":
-        asset.status = "approved"
-        if payload.platforms:
-            asset.platforms_used = payload.platforms
-        asset.published_at = datetime.utcnow()
+        require_verified_email(current_user)
+        if asset.status == "published":
+            raise HTTPException(status_code=409, detail="Asset is already published.")
+        if asset.status == "scheduled":
+            raise HTTPException(status_code=409, detail="Asset is scheduled and cannot be approved directly.")
 
-        # TODO: Trigger actual platform publishing via SocialService
-        # For now, mark as published immediately
-        asset.status = "published"
+        requested_platforms = payload.platforms or asset.platforms_used or []
+        normalized_platforms: list[str] = []
+        for platform in requested_platforms:
+            key = str(platform or "").strip().lower()
+            if key and key not in normalized_platforms:
+                normalized_platforms.append(key)
 
-        logger.info("[ReviewQueue] asset_id=%d APPROVED by user_id=%d", asset_id, current_user.id)
+        drafts = asset.platform_drafts or {}
+        normalized_drafts = {
+            str(platform).strip().lower(): text
+            for platform, text in drafts.items()
+            if str(platform).strip()
+        }
+
+        # If no explicit platform list was supplied, infer from draft keys.
+        if not normalized_platforms:
+            normalized_platforms = [p for p in normalized_drafts.keys() if p]
+
+        if not normalized_platforms:
+            raise HTTPException(
+                status_code=400,
+                detail="No platforms selected for approval/publish.",
+            )
+
+        content_fallback = (asset.text_content or "").strip()
+        content_map: dict[str, str] = {}
+        for platform in normalized_platforms:
+            text = (normalized_drafts.get(platform) or "").strip()
+            if not text:
+                text = content_fallback
+            if not text:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Missing draft content for platform '{platform}'.",
+                )
+            content_map[platform] = text
+
+        video_urls = (
+            [asset.content_url]
+            if asset.content_url and asset.asset_type in ("video", "bundle")
+            else None
+        )
+
+        post = Post(
+            user_id=current_user.id,
+            original_content=content_fallback or "Review queue publish",
+            enhanced_content=normalized_drafts or None,
+            platform_specific_content=content_map,
+            video_urls=",".join(video_urls) if video_urls else None,
+            platforms=",".join(normalized_platforms),
+            status="published",
+        )
+        db.add(post)
+        await db.flush()
+
+        results = await SocialService.publish_post(
+            db=db,
+            user_id=current_user.id,
+            content_map=content_map,
+            video_urls=video_urls,
+        )
+
+        successful = 0
+        details = []
+        for result_item in results:
+            if result_item.success:
+                successful += 1
+
+            db.add(
+                PostResult(
+                    post_id=post.id,
+                    platform=result_item.platform,
+                    status="published" if result_item.success else "failed",
+                    platform_post_id=result_item.post_id,
+                    platform_post_url=result_item.post_url,
+                    content_used=content_map.get(result_item.platform.lower()),
+                    error_message=result_item.error,
+                )
+            )
+            details.append(result_item.to_dict())
+
+        if successful > 0:
+            asset.status = "published"
+            asset.published_at = datetime.utcnow()
+        else:
+            asset.status = "failed"
+            post.status = "failed"
+
+        asset.platforms_used = normalized_platforms
+
+        logger.info(
+            "[ReviewQueue] asset_id=%d APPROVED by user_id=%d success=%d/%d",
+            asset_id,
+            current_user.id,
+            successful,
+            len(results),
+        )
+        await db.commit()
+        await db.refresh(asset)
+        return {
+            **_serialize_asset(asset),
+            "publish_results": details,
+            "published_successful": successful,
+            "published_failed": len(results) - successful,
+            "post_id": post.id,
+        }
 
     elif action == "reject":
         asset.status = "rejected"

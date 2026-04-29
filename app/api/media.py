@@ -3,8 +3,8 @@ KontentPyper - Media Uploader API Router
 Handles multiple file uploads to Cloudflare R2 bucket.
 """
 
-import os
 import uuid
+import asyncio
 import boto3
 from typing import List
 from botocore.exceptions import ClientError
@@ -12,6 +12,10 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 
 from app.core.deps import CurrentUser
 from app.core.config import settings
+from app.core.upload_validation import (
+    MAX_FILES_PER_REQUEST,
+    validate_upload_file,
+)
 
 router = APIRouter()
 
@@ -37,43 +41,46 @@ async def upload_media(user: CurrentUser, files: List[UploadFile] = File(...)):
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided.")
+    if len(files) > MAX_FILES_PER_REQUEST:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many files. Maximum allowed per request is {MAX_FILES_PER_REQUEST}.",
+        )
 
     s3_client = get_r2_client()
+    dev_url = settings.R2_PUBLIC_DEV_URL.rstrip('/')
+    if not dev_url:
+        raise HTTPException(500, "R2_PUBLIC_DEV_URL is not configured.")
+
     urls = []
     
     for file in files:
         try:
+            ext, content_type, size_bytes = validate_upload_file(file)
+
             # Create a unique filename to avoid overwrites
-            ext = os.path.splitext(file.filename)[1]
             unique_filename = f"{uuid.uuid4().hex}{ext}"
-            
-            # Read file data
-            file_bytes = await file.read()
-            
-            # Identify content type (Boto3 doesn't auto-detect for raw bytes robustly sometimes)
-            content_type = file.content_type or "application/octet-stream"
-            
-            # Upload to R2 Bucket
-            s3_client.put_object(
-                Bucket=settings.R2_BUCKET_NAME,
-                Key=unique_filename,
-                Body=file_bytes,
-                ContentType=content_type
+
+            # Stream file object to R2 to avoid loading entire payload into memory.
+            file.file.seek(0)
+            await asyncio.to_thread(
+                s3_client.upload_fileobj,
+                file.file,
+                settings.R2_BUCKET_NAME,
+                unique_filename,
+                {"ContentType": content_type},
             )
-            
-            # Construct public URL
-            dev_url = settings.R2_PUBLIC_DEV_URL.rstrip('/')
-            if not dev_url:
-                # Fallback to dev url requirement, otherwise media won't be accessible publicly
-                raise HTTPException(500, "R2_PUBLIC_DEV_URL is not configured.")
                 
             public_url = f"{dev_url}/{unique_filename}"
             urls.append({
                 "original_filename": file.filename,
                 "url": public_url,
-                "type": "video" if content_type.startswith("video") else "image"
+                "type": "video" if content_type.startswith("video") else "image",
+                "size_bytes": size_bytes,
             })
             
+        except HTTPException:
+            raise
         except ClientError as e:
             raise HTTPException(status_code=500, detail=f"S3 Upload failed: {str(e)}")
         except Exception as e:

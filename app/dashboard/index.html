@@ -178,7 +178,7 @@
   <!-- ── Studio ────────────────────────────────────────────────── -->
   <section class="page" id="page-studio" aria-label="Studio">
     <!-- Custom Studio Topbar explicitly mapped to the screenshot if we hide the global one -->
-    <div class="section-header" style="margin-bottom:0; flex-direction: column; align-items: flex-start; gap: 4px;">
+    <div class="section-header studio-page-header">
       <span class="glow-label">AI Studio</span>
       <span class="muted" style="font-size:12px; font-family:var(--font-mono); letter-spacing:0.04em;">
         Write once — generate for everywhere
@@ -189,41 +189,42 @@
       <!-- Ambient orb behind icon -->
       <div class="studio-empty-orb" aria-hidden="true"></div>
 
-      <!-- Sparkle icon with pulse -->
-      <div class="studio-empty-icon" aria-hidden="true">✦</div>
+      <div class="studio-empty-content">
+        <!-- Sparkle icon with pulse -->
+        <div class="studio-empty-icon" aria-hidden="true">✦</div>
 
-      <!-- Heading -->
-      <h2 class="studio-empty-heading">Create a New Post</h2>
+        <!-- Heading -->
+        <h2 class="studio-empty-heading">Create a New Post</h2>
 
-      <!-- Subtext -->
-      <p class="studio-empty-sub">
-        Drop your raw idea, link, or thoughts. The AI adapts it 
-        into format-perfect posts for every platform you've connected.
-      </p>
+        <!-- Subtext -->
+        <p class="studio-empty-sub">
+          Drop your raw idea, link, or thoughts. The AI adapts it 
+          into format-perfect posts for every platform you've connected.
+        </p>
 
-      <!-- CTA -->
-      <button class="btn-primary studio-empty-cta" onclick="openStudioModal()">
-        <span style="font-size:18px; font-weight:200; line-height:0;">+</span>
-        Start Writing
-      </button>
+        <!-- CTA -->
+        <button class="btn-primary studio-empty-cta" onclick="openStudioModal()">
+          <span style="font-size:18px; font-weight:200; line-height:0;">+</span>
+          Start Writing
+        </button>
 
-      <!-- Hint strip -->
-      <div class="studio-hints">
-        <div class="studio-hint">
-          <span class="studio-hint-dot"></span>
-          AI-optimized per platform
-        </div>
-        <div class="studio-hint">
-          <span class="studio-hint-dot"></span>
-          One-click multi-publish
-        </div>
-        <div class="studio-hint">
-          <span class="studio-hint-dot"></span>
-          Schedule or publish instantly
+        <!-- Hint strip -->
+        <div class="studio-hints">
+          <div class="studio-hint">
+            <span class="studio-hint-dot"></span>
+            AI-optimized per platform
+          </div>
+          <div class="studio-hint">
+            <span class="studio-hint-dot"></span>
+            One-click multi-publish
+          </div>
+          <div class="studio-hint">
+            <span class="studio-hint-dot"></span>
+            Schedule or publish instantly
+          </div>
         </div>
       </div>
     </div>
-    
     <div class="studio-bottom-bar">
       <div class="studio-system-pill">
         <span class="system-icon">

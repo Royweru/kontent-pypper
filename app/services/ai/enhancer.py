@@ -6,8 +6,7 @@ Uses LangChain structured output to guarantee schema-valid responses.
 """
 from app.services.ai.llm_client import LLMClient
 from typing import Optional
-from .schemas import EnhancedDraft
-from app.core.config import settings
+from .schemas import EnhancedDraft, EnhancedDraftResponse
 
 # ── Service ───────────────────────────────────────────────────────
 

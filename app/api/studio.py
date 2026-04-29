@@ -14,6 +14,7 @@ from app.services.ai.llm_client import LLMClient
 from app.services.social_service import SocialService
 from app.core.config import settings
 from app.core.platform_rules import PLATFORM_RULES, validate_post_for_platform
+from app.core.publish_scope import build_scoped_content_map
 
 router = APIRouter()
 
@@ -77,13 +78,20 @@ async def publish_now(req: PublishRequest, user: CurrentUser, db: DB):
 
     from app.models.post import Post, PostResult
 
-    # 0. Validate Rules
+    # 0. Normalize and validate publish scope
+    normalized_platforms, content_map = build_scoped_content_map(
+        requested_platforms=req.platforms,
+        platform_specific_content=req.platform_specific_content,
+        original_content=req.original_content,
+    )
+
+    # 1. Validate Rules
     has_video = bool(req.video_urls)
     has_image = bool(req.image_urls)
     
     validation_errors = []
-    for platform in req.platforms:
-        content = req.platform_specific_content.get(platform, req.original_content)
+    for platform in normalized_platforms:
+        content = content_map.get(platform, req.original_content)
         # Note: video_duration_sec could be fetched from video metadata later
         errors = validate_post_for_platform(platform, content, has_video, has_image, 0)
         validation_errors.extend(errors)
@@ -91,29 +99,30 @@ async def publish_now(req: PublishRequest, user: CurrentUser, db: DB):
     if validation_errors:
         raise HTTPException(status_code=400, detail="Validation Failed: " + " | ".join(validation_errors))
 
-    # 1. Create the overarching Post record
+    # 2. Create the overarching Post record
     new_post = Post(
         user_id=user.id,
         original_content=req.original_content,
-        enhanced_content=req.platform_specific_content,
+        enhanced_content=content_map,
+        platform_specific_content=content_map,
         image_urls=",".join(req.image_urls) if req.image_urls else None,
         video_urls=",".join(req.video_urls) if req.video_urls else None,
-        platforms=",".join(req.platforms),
+        platforms=",".join(normalized_platforms),
         status="published",
     )
     db.add(new_post)
     await db.flush() # Flush to get the ID
 
-    # 2. Transmit to platforms
+    # 3. Transmit to platforms
     results = await SocialService.publish_post(
         db=db,
         user_id=user.id,
-        content_map=req.platform_specific_content,
+        content_map=content_map,
         image_urls=req.image_urls,
         video_urls=req.video_urls,
     )
 
-    # 3. Save the results
+    # 4. Save the results
     successful = 0
     for r in results:
         status = "published" if r.success else "failed"
@@ -140,7 +149,7 @@ async def publish_now(req: PublishRequest, user: CurrentUser, db: DB):
         "success": successful > 0,
         "successful": successful,
         "failed": len(results) - successful,
-        "total_platforms": len(req.platforms),
+        "total_platforms": len(normalized_platforms),
         "details": [r.to_dict() for r in results],
     }
 
