@@ -23,6 +23,7 @@ from app.core.deps import get_current_user
 from app.models.content_source import ContentItem
 from app.models.user import User
 from app.models.content import ContentSource
+from app.services.credit_service import get_tier_config
 from sqlalchemy import or_
 
 router = APIRouter()
@@ -281,7 +282,7 @@ async def add_feed_source(
 ):
     """
     Adds a content source for the current user.
-    Free plan limits:
+    Free tier limits:
       - RSS feeds  : max 5
       - Subreddits : max 2
     """
@@ -291,19 +292,23 @@ async def add_feed_source(
         )
     ).scalars().all()
 
-    if current_user.plan == "free":
+    tier = (current_user.tier_level or "free").lower()
+    cfg = get_tier_config(tier)
+    if tier == "free":
         rss_count = sum(1 for s in all_sources if s.source_type == "rss")
         reddit_count = sum(1 for s in all_sources if s.source_type == "reddit")
+        max_rss = cfg.get("max_feeds") or 5
+        max_reddit = 2
 
-        if req.source_type == "rss" and rss_count >= 5:
+        if req.source_type == "rss" and rss_count >= max_rss:
             raise HTTPException(
                 status_code=400,
-                detail="Free plan is limited to 5 RSS feeds. Upgrade to Pro for unlimited sources."
+                detail=f"Free tier is limited to {max_rss} RSS feeds. Upgrade to Pro for unlimited sources."
             )
-        if req.source_type == "reddit" and reddit_count >= 2:
+        if req.source_type == "reddit" and reddit_count >= max_reddit:
             raise HTTPException(
                 status_code=400,
-                detail="Free plan is limited to 2 subreddits. Upgrade to Pro for unlimited sources."
+                detail=f"Free tier is limited to {max_reddit} subreddits. Upgrade to Pro for unlimited sources."
             )
 
     new_source = ContentSource(

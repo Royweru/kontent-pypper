@@ -146,6 +146,12 @@ class GoogleAuthService:
                 last_login_method="google",
                 is_email_verified=True,
                 is_active=True,
+                plan="free",
+                tier_level="free",
+                video_credits_remaining=5,
+                video_credits_used_this_month=0,
+                workflow_runs_today=0,
+                credits_reset_date=datetime.utcnow() + timedelta(days=30),
             )
             db.add(user)
             await db.flush()
@@ -174,6 +180,16 @@ class GoogleAuthService:
         user.last_login = datetime.utcnow()
         if not user.auth_provider:
             user.auth_provider = "google"
+        if not user.tier_level:
+            user.tier_level = "free"
+        if not user.plan:
+            user.plan = "free"
+        # Backfill starter credits for legacy Google accounts that predate tier rollout.
+        if not user.credits_reset_date and (user.video_credits_remaining or 0) <= 0:
+            user.video_credits_remaining = 5
+            user.video_credits_used_this_month = 0
+            user.workflow_runs_today = user.workflow_runs_today or 0
+            user.credits_reset_date = datetime.utcnow() + timedelta(days=30)
 
     @staticmethod
     def _update_identity(identity: UserIdentity, profile: dict) -> None:

@@ -14,13 +14,19 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
+from app.core.config import settings
 from app.models.content import ContentSource
 from app.models.workflow import ContentCandidate
 from app.services.ai.llm_client import LLMClient
 from app.services.ai.script_generator import generate_video_script
 from app.services.ingest.reddit_fetcher import fetch_all_reddit, fetch_user_reddit
 from app.services.ingest.rss_fetcher import fetch_all_rss, fetch_user_rss
+from app.services.media.stock_video_pipeline import (
+    StockVideoPipelineError,
+    StockVideoPipelineService,
+)
 from app.services.workflow.state import WorkflowState
+from app.schemas.content import ScriptPoint, VideoScript
 
 logger = logging.getLogger(__name__)
 
@@ -224,34 +230,62 @@ async def generate_media_node(state: WorkflowState):
     Generate media (video) based on user tier and selected video model.
     """
     state["status"] = "Generating media assets..."
+    user_id = int(state.get("user_id") or 0)
+    canary_percent = max(0, min(int(settings.ROLLOUT_CANARY_PERCENT or 0), 100))
+    in_canary = (user_id % 100) < canary_percent if user_id > 0 else canary_percent >= 100
+
+    if not settings.FEATURE_REAL_VIDEO_PIPELINE or not in_canary:
+        state["video_asset"] = None
+        state["video_source"] = None
+        state["credits_consumed"] = 0
+        state["status"] = "Real video pipeline disabled by rollout policy."
+        return state
     article = state.get("selected_article")
     video_model = state.get("video_model", "stock")
     policy = state.get("workflow_policy") or {}
 
     if article:
         try:
-            video_script = await generate_video_script(
-                article["title"],
-                article.get("snippet", ""),
-                article.get("source_name", "Unknown"),
-            )
+            try:
+                video_script = await generate_video_script(
+                    article["title"],
+                    article.get("snippet", ""),
+                    article.get("source_name", "Unknown"),
+                )
+            except Exception as script_exc:
+                logger.warning(
+                    "LLM video script generation failed. Using deterministic fallback: %s",
+                    script_exc,
+                )
+                fallback_title = article.get("title", "Trending update")
+                fallback_snippet = article.get("snippet", "")
+                video_script = VideoScript(
+                    title=fallback_title[:60],
+                    hook=fallback_title,
+                    points=[
+                        ScriptPoint(text=fallback_snippet[:220] or fallback_title, visual_cue="news footage"),
+                        ScriptPoint(text="Here is why this matters right now.", visual_cue="data visualization"),
+                        ScriptPoint(text="Follow for more updates.", visual_cue="call to action"),
+                    ],
+                    cta="Follow for more updates.",
+                    hashtags=["news", "update", "trending"],
+                    search_query=fallback_title,
+                )
 
-            if video_model == "stock":
-                state["video_asset"] = "https://www.w3schools.com/html/mov_bbb.mp4"
-                state["video_source"] = "pexels_stock"
-                state["credits_consumed"] = 0
-            elif video_model == "kling":
-                state["video_asset"] = "https://www.w3schools.com/html/mov_bbb.mp4"
-                state["video_source"] = "kling_ai"
-                state["credits_consumed"] = 1
-            elif video_model in ("runway", "sora"):
-                state["video_asset"] = "https://www.w3schools.com/html/mov_bbb.mp4"
-                state["video_source"] = f"{video_model}_premium"
-                state["credits_consumed"] = 3
-            else:
-                state["video_asset"] = "https://www.w3schools.com/html/mov_bbb.mp4"
-                state["video_source"] = "pexels_stock"
-                state["credits_consumed"] = 0
+            # Until premium providers are wired, always generate a real stock-backed asset.
+            # This guarantees a real video output and avoids placeholder URLs.
+            stock_pipeline = StockVideoPipelineService()
+            generated = await stock_pipeline.generate_video(
+                script=video_script,
+                fallback_title=article.get("title", "Trending update"),
+                fallback_snippet=article.get("snippet", ""),
+            )
+            state["video_asset"] = generated["video_url"]
+            state["video_source"] = "pexels_stock"
+            state["credits_consumed"] = 0
+            state["status"] = (
+                f"Media generated via stock pipeline ({generated.get('storage_backend', 'unknown')})."
+            )
 
             state["video_script"] = {
                 "title": video_script.title,
@@ -260,13 +294,26 @@ async def generate_media_node(state: WorkflowState):
                 "cta": video_script.cta,
                 "hashtags": video_script.hashtags,
                 "narration": video_script.full_narration,
+                "search_query": video_script.search_query,
                 "review_required": policy.get("require_review", False),
                 "max_videos_per_run": policy.get("max_videos_per_run", 1),
+                "requested_video_model": video_model,
             }
+        except StockVideoPipelineError as exc:
+            logger.error("Stock video generation failed: %s", exc)
+            state["video_asset"] = None
+            state["video_source"] = None
+            state["credits_consumed"] = 0
+            state["status"] = f"Media generation failed: {exc}"
         except Exception as exc:
             logger.error("Failed to generate video script or media: %s", exc)
             state["video_asset"] = None
+            state["video_source"] = None
             state["credits_consumed"] = 0
+            state["status"] = "Media generation failed unexpectedly."
 
-    state["status"] = "Workflow complete"
+    if state.get("video_asset"):
+        state["status"] = "Workflow complete"
+    else:
+        state["status"] = "Workflow complete (video generation failed)"
     return state

@@ -3,7 +3,7 @@ KontentPyper - Authentication API Routes
 POST /login, POST /register, GET /me
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -32,6 +32,36 @@ def _verification_url(request: Request, token: str) -> str:
     return f"{request.url_for('verify_email')}?token={token}"
 
 
+async def _ensure_free_trial_entitlements(db: DB, user: User) -> None:
+    """
+    Backfill tier/credit defaults for legacy accounts created before tier rollout.
+    This is a one-time fixup guarded by credits_reset_date.
+    """
+    changed = False
+    if not user.tier_level:
+        user.tier_level = "free"
+        changed = True
+    if not user.plan:
+        user.plan = "free"
+        changed = True
+
+    tier = (user.tier_level or "free").lower()
+    if (
+        tier == "free"
+        and not user.credits_reset_date
+        and (user.video_credits_remaining or 0) <= 0
+    ):
+        user.video_credits_remaining = 5
+        user.video_credits_used_this_month = 0
+        user.workflow_runs_today = user.workflow_runs_today or 0
+        user.credits_reset_date = datetime.utcnow() + timedelta(days=30)
+        changed = True
+
+    if changed:
+        await db.commit()
+        await db.refresh(user)
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(payload: UserRegister, request: Request, db: DB):
     """Create a new user account."""
@@ -55,6 +85,12 @@ async def register(payload: UserRegister, request: Request, db: DB):
         email=payload.email,
         username=payload.username,
         hashed_password=hash_password(payload.password),
+        plan="free",
+        tier_level="free",
+        video_credits_remaining=5,
+        video_credits_used_this_month=0,
+        workflow_runs_today=0,
+        credits_reset_date=datetime.utcnow() + timedelta(days=30),
     )
     db.add(user)
     await db.commit()
@@ -240,6 +276,8 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is inactive.",
         )
+
+    await _ensure_free_trial_entitlements(db, user)
 
     token = create_access_token(
         {"sub": str(user.id)},

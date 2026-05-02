@@ -25,6 +25,7 @@ from app.models.analytics import (  # noqa: F401
 from app.models.content_source import ContentItem, ApprovalQueue  # noqa: F401
 from app.models.credit import CreditTransaction  # noqa: F401
 from app.models.schedule import ScheduledJob  # noqa: F401
+from app.models.billing import PaymentWebhookEvent  # noqa: F401
 from app.models.workflow import (  # noqa: F401
     WorkflowRun,
     ContentCandidate,

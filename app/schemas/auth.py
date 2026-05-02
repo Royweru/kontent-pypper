@@ -21,6 +21,9 @@ class UserResponse(BaseModel):
     is_active: bool
     is_email_verified: bool = False
     plan: str
+    tier_level: str = "free"
+    video_credits_remaining: int = 0
+    workflow_runs_today: int = 0
     posts_used: int
     posts_limit: int
     created_at: Optional[datetime] = None

@@ -109,6 +109,105 @@ function getApiErrorMessage(payload, fallback = 'Request failed') {
   return fallback;
 }
 
+function getCurrentTier() {
+  return (currentUser?.tier_level || currentUser?.plan || 'free').toLowerCase();
+}
+
+function clearBillingQueryFlags() {
+  const url = new URL(window.location.href);
+  const params = url.searchParams;
+  let changed = false;
+  ['billing', 'reference', 'trxref'].forEach((key) => {
+    if (params.has(key)) {
+      params.delete(key);
+      changed = true;
+    }
+  });
+  if (changed) {
+    const query = params.toString();
+    const nextUrl = `${url.pathname}${query ? `?${query}` : ''}${url.hash || ''}`;
+    window.history.replaceState({}, '', nextUrl);
+  }
+}
+
+async function handleBillingReturn() {
+  const params = new URLSearchParams(window.location.search || '');
+  const billingStatus = (params.get('billing') || '').toLowerCase();
+  if (!billingStatus) return;
+
+  if (billingStatus === 'cancelled') {
+    toast('Billing flow cancelled.', 'info');
+    clearBillingQueryFlags();
+    return;
+  }
+
+  if (billingStatus !== 'success') {
+    clearBillingQueryFlags();
+    return;
+  }
+
+  const reference = (params.get('reference') || params.get('trxref') || '').trim();
+  if (!reference) {
+    toast('Payment return detected, but no transaction reference was provided.', 'warning');
+    clearBillingQueryFlags();
+    return;
+  }
+
+  try {
+    const res = await apiFetch('/billing/verify-transaction', {
+      method: 'POST',
+      body: JSON.stringify({ reference }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast(getApiErrorMessage(payload, 'Payment verification failed.'), 'error');
+      clearBillingQueryFlags();
+      return;
+    }
+
+    const tierLabel = String(payload.tier_level || '').toUpperCase() || 'PAID';
+    toast(`Payment verified. Plan upgraded to ${tierLabel}.`, 'success');
+    const me = await apiFetch('/auth/me');
+    if (me.ok) {
+      currentUser = await me.json();
+      renderUser(currentUser);
+    }
+  } catch (e) {
+    toast(`Payment verification failed: ${e.message}`, 'error');
+  } finally {
+    clearBillingQueryFlags();
+  }
+}
+
+async function startUpgrade(tier = 'pro') {
+  const requestedTier = String(tier || 'pro').toLowerCase();
+  if (!['pro', 'max'].includes(requestedTier)) {
+    toast('Unsupported upgrade tier selected.', 'error');
+    return;
+  }
+
+  try {
+    const res = await apiFetch('/billing/checkout-session', {
+      method: 'POST',
+      body: JSON.stringify({ tier: requestedTier }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast(getApiErrorMessage(payload, 'Could not start checkout.'), 'error');
+      return;
+    }
+
+    const checkoutUrl = payload?.checkout_url;
+    if (!checkoutUrl) {
+      toast('Checkout URL was not returned by billing service.', 'error');
+      return;
+    }
+    window.location.assign(checkoutUrl);
+  } catch (e) {
+    toast(`Upgrade failed: ${e.message}`, 'error');
+  }
+}
+
 // ── Toast ─────────────────────────────────────────────────────────
 const toastStack = document.getElementById('toastStack');
 
@@ -162,7 +261,7 @@ async function logout() {
 
 function renderUser(user) {
   document.getElementById('userName').textContent   = user.username;
-  document.getElementById('userPlan').textContent   = user.plan.toUpperCase();
+  document.getElementById('userPlan').textContent   = (user.tier_level || user.plan || 'free').toUpperCase();
   document.getElementById('userInitials').textContent = user.username.slice(0, 2).toUpperCase();
 }
 
@@ -173,6 +272,7 @@ function renderUser(user) {
     if (!res.ok) { logout(); return; }
     currentUser = await res.json();
     renderUser(currentUser);
+    await handleBillingReturn();
     
     // Fetch Platform Rules
     const rulesRes = await apiFetch('/studio/rules');
@@ -199,7 +299,7 @@ async function loadOverview() {
   } else {
     document.getElementById('stat-posts').textContent     = used;
     document.getElementById('stat-remaining').textContent = remaining;
-    document.getElementById('stat-plan').textContent      = `ON ${currentUser.plan.toUpperCase()} PLAN`;
+    document.getElementById('stat-plan').textContent      = `ON ${getCurrentTier().toUpperCase()} PLAN`;
   }
 
   // Connections count
@@ -1561,7 +1661,7 @@ window.toggleFeed = async function(feedObj) {
     }
   } else {
     // Add - check tier limits
-    const isPro = currentUser && currentUser.plan !== 'free';
+    const isPro = getCurrentTier() !== 'free';
     const rssCount = userFeeds.filter(f => f.source_type !== 'reddit').length;
     const redditCount = userFeeds.filter(f => f.source_type === 'reddit').length;
 
@@ -1626,7 +1726,7 @@ window.addCustomFeed = async function() {
   const url = input.value.trim();
   if (!url) return;
 
-  const isPro = currentUser && currentUser.plan !== 'free';
+  const isPro = getCurrentTier() !== 'free';
   const rssCount = userFeeds.filter(f => f.source_type !== 'reddit').length;
   if (!isPro && rssCount >= 5) {
     toast('Free plan: max 5 RSS feeds. Upgrade to Pro.', 'error');
@@ -1737,7 +1837,7 @@ function renderActiveSubredditCards() {
 }
 
 function updateTierBadge() {
-  const isPro = currentUser && currentUser.plan !== 'free';
+  const isPro = getCurrentTier() !== 'free';
   const rssCount = userFeeds.filter(f => f.source_type !== 'reddit').length;
   const redditCount = userFeeds.filter(f => f.source_type === 'reddit').length;
 
@@ -2904,7 +3004,7 @@ async function loadCampaigns() {
   if (!listEl) return;
 
   // Tier gate: only Max users see campaigns
-  const tier = (currentUser?.plan || currentUser?.tier_level || 'free').toLowerCase();
+  const tier = getCurrentTier();
   if (tier !== 'max') {
     tierGate.style.display = 'block';
     statsRow.style.display = 'none';

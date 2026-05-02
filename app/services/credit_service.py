@@ -4,7 +4,7 @@ KontentPyper - Credit Service
 Central business-logic layer for all credit and tier operations.
 
 Tier Reference:
-  - free : 0 video credits, 1 workflow run/day
+  - free : 5 video credits/month, 3 workflow runs/day
   - pro  : 20 video credits/month, unlimited runs/day
   - max  : 50 video credits/month, unlimited runs/day + cron
 
@@ -30,11 +30,11 @@ logger = logging.getLogger(__name__)
 
 TIER_CONFIG = {
     "free": {
-        "monthly_video_credits": 0,
-        "max_runs_per_day": 1,
-        "max_feeds": 3,
+        "monthly_video_credits": 5,
+        "max_runs_per_day": 3,
+        "max_feeds": 5,
         "max_niches": 1,
-        "max_platforms_per_run": 1,
+        "max_platforms_per_run": None,   # All supported platforms
         "video_quality": "stock",       # Pexels + MoviePy only
         "has_scheduling": False,
         "has_cron": False,
@@ -133,7 +133,7 @@ async def get_user_credits(db: AsyncSession, user_id: int) -> dict:
 async def check_workflow_run_allowed(db: AsyncSession, user: User) -> None:
     """
     Verifies the user has permission to start a workflow run.
-    For free tier: enforces 1 run/day limit.
+    For free tier: enforces the configured daily run limit.
     For pro/max: always allowed (unlimited runs).
 
     Raises DailyRunLimitError if blocked.

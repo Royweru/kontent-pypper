@@ -70,7 +70,7 @@ app.add_middleware(
 # -- API Routes -------------------------------------------------------------
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 
-from app.api import social, studio, analytics, news, posts, media, workflow, assets, schedule, review, campaigns
+from app.api import social, studio, analytics, news, posts, media, workflow, assets, schedule, review, campaigns, billing, system
 app.include_router(social.router,    prefix="/api/v1/social",    tags=["social"])
 app.include_router(studio.router,    prefix="/api/v1/studio",    tags=["studio"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
@@ -82,6 +82,8 @@ app.include_router(workflow.router,  prefix="/api/v1/workflow",  tags=["workflow
 app.include_router(schedule.router,  prefix="/api/v1/schedule",  tags=["schedule"])
 app.include_router(review.router,    prefix="/api/v1/review",    tags=["review"])
 app.include_router(campaigns.router, prefix="/api/v1/campaigns", tags=["campaigns"])
+app.include_router(billing.router,   prefix="/api/v1/billing",   tags=["billing"])
+app.include_router(system.router,    prefix="/api/v1/system",    tags=["system"])
 
 # -- Dashboard UI -----------------------------------------------------------
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])

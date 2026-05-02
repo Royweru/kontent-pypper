@@ -3,12 +3,17 @@ import logging
 import random
 import os
 import asyncio
+import re
+import time
 from pathlib import Path
 from typing import Optional
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+_PEXELS_QUERY_CACHE: dict[str, tuple[float, Optional[str]]] = {}
+_PEXELS_QUERY_CACHE_TTL_SECONDS = 600
 
 class PexelsFetcher:
     """
@@ -48,13 +53,22 @@ class PexelsFetcher:
             return None
 
         # 2. Download the video
-        filename = f"pexels_{random.randint(1000,9999)}_{query.replace(' ', '_')[:20]}.mp4"
+        safe_query = re.sub(r"[^a-zA-Z0-9_-]+", "_", query).strip("_") or "stock"
+        filename = f"pexels_{random.randint(1000,9999)}_{safe_query[:32]}.mp4"
         filepath = os.path.join(output_dir, filename)
         
         success = await self._download_file(video_url, filepath)
         return filepath if success else None
 
     async def _search_for_video_url(self, query: str) -> Optional[str]:
+        cache_key = (query or "").strip().lower()
+        if cache_key:
+            cached = _PEXELS_QUERY_CACHE.get(cache_key)
+            if cached:
+                ts, cached_url = cached
+                if (time.time() - ts) < _PEXELS_QUERY_CACHE_TTL_SECONDS:
+                    return cached_url
+
         headers = {
             "Authorization": self.api_key
         }
@@ -75,6 +89,8 @@ class PexelsFetcher:
 
                 videos = data.get("videos", [])
                 if not videos:
+                    if cache_key:
+                        _PEXELS_QUERY_CACHE[cache_key] = (time.time(), None)
                     return None
 
                 # Pick a random video from the top results to avoid repeating the exact same clip
@@ -84,17 +100,25 @@ class PexelsFetcher:
                 # Find the best specific file (HD, ideally 1080x1920 or 720x1280)
                 # Sort by height descending to get the best quality, but cap at 1920 to keep size reasonable
                 hd_files = [
-                    f for f in video_files 
-                    if getattr(f, "height", 0) and getattr(f, "width", 0) 
-                    and f.get("height", 0) >= getattr(f, "width", 0) # ensure portrait/square
-                    and f.get("height", 0) <= 2000
+                    f for f in video_files
+                    if isinstance(f, dict)
+                    and int(f.get("height", 0) or 0) > 0
+                    and int(f.get("width", 0) or 0) > 0
+                    and int(f.get("height", 0) or 0) >= int(f.get("width", 0) or 0)  # portrait/square
+                    and int(f.get("height", 0) or 0) <= 2000
                 ]
                 
                 if hd_files:
                     hd_files.sort(key=lambda x: x.get("height", 0), reverse=True)
-                    return hd_files[0]["link"]
+                    selected = hd_files[0]["link"]
+                    if cache_key:
+                        _PEXELS_QUERY_CACHE[cache_key] = (time.time(), selected)
+                    return selected
                 elif video_files:
-                    return video_files[0]["link"]
+                    selected = video_files[0]["link"]
+                    if cache_key:
+                        _PEXELS_QUERY_CACHE[cache_key] = (time.time(), selected)
+                    return selected
                 
                 return None
 

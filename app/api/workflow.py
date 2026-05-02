@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.verification import require_verified_email
 from app.models.user import User
 from app.models.workflow import WorkflowRun, RunEvent, QualityEvaluation
@@ -29,8 +30,14 @@ from app.services.credit_service import (
     check_video_credits,
     consume_credits,
     get_video_model_for_tier,
+    VIDEO_CREDIT_COSTS,
     DailyRunLimitError,
     InsufficientCreditsError,
+)
+from app.services.ai.script_generator import generate_video_script
+from app.services.media.stock_video_pipeline import (
+    StockVideoPipelineError,
+    StockVideoPipelineService,
 )
 
 logger = logging.getLogger(__name__)
@@ -635,6 +642,8 @@ async def regenerate_video(
     Free: stock only (0 credits)
     """
     require_verified_email(current_user)
+    if not settings.FEATURE_REAL_VIDEO_PIPELINE:
+        raise HTTPException(status_code=503, detail="Real video pipeline is disabled by feature flag.")
 
     tier = current_user.tier_level or "free"
     video_model = get_video_model_for_tier(tier)
@@ -644,15 +653,35 @@ async def regenerate_video(
     if requested_model and tier == "max" and requested_model in ("runway", "sora"):
         video_model = requested_model
 
-    # TODO: Actually call the video generation API here
-    # For now, return a placeholder video URL
+    title = str(payload.get("title") or "Trending update")
+    snippet = str(payload.get("snippet") or payload.get("context") or "")
+    source_name = str(payload.get("source_name") or "Unknown")
+
+    try:
+        script = await generate_video_script(title, snippet, source_name)
+        generated = await StockVideoPipelineService().generate_video(
+            script=script,
+            fallback_title=title,
+            fallback_snippet=snippet,
+        )
+    except StockVideoPipelineError as exc:
+        raise HTTPException(status_code=502, detail=f"Video regeneration failed: {exc}")
+    except Exception as exc:
+        logger.error("Regenerate video failed for user_id=%d: %s", current_user.id, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Video regeneration failed unexpectedly.")
+
+    requested_credits = VIDEO_CREDIT_COSTS.get(video_model, 0)
+    # Premium providers are not wired yet; we generate real stock assets without charging.
     credit_cost = 0
     return {
         "status": "success",
-        "video_url": "https://www.w3schools.com/html/mov_bbb.mp4",
-        "model_used": video_model,
-        "credits_requested": 0,
+        "video_url": generated["video_url"],
+        "model_requested": video_model,
+        "model_used": "stock",
+        "video_source": "pexels_stock",
+        "credits_requested": requested_credits,
         "credits_consumed": credit_cost,
-        "billing_decision_reason": "placeholder_asset_not_billable",
+        "billing_decision_reason": "premium_not_enabled_fallback_stock",
         "credits_remaining": current_user.video_credits_remaining or 0,
+        "storage_backend": generated.get("storage_backend"),
     }

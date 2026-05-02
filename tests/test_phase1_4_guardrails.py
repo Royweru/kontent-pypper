@@ -3,6 +3,8 @@ from fastapi import HTTPException
 
 from app.core.publish_scope import build_scoped_content_map
 from app.services.workflow.billing import determine_billable_credits
+from app.services.credit_service import get_tier_config
+from app.services.workflow.policy import build_workflow_policy
 import app.services.ai.enhancer as enhancer_module
 import app.services.platforms.linkedin as linkedin_module
 
@@ -70,3 +72,18 @@ def test_determine_billable_credits_allows_real_billable_provider_asset():
     )
     assert credits == 3
     assert reason == "billable_provider_asset_confirmed"
+
+
+def test_free_tier_trial_limits_are_relaxed():
+    cfg = get_tier_config("free")
+    assert cfg["monthly_video_credits"] == 5
+    assert cfg["max_runs_per_day"] == 3
+    assert cfg["max_platforms_per_run"] is None
+
+
+def test_free_workflow_policy_allows_all_platforms_per_run():
+    policy = build_workflow_policy(
+        tier_level="free",
+        target_platforms=["twitter", "linkedin", "youtube"],
+    )
+    assert policy["target_platforms"] == ["twitter", "linkedin", "youtube"]

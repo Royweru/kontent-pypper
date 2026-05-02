@@ -64,6 +64,8 @@ class User(Base):
 
     # ── Monetization: Credits & Tier ──────────────────────────────
     tier_level = Column(String, server_default=text("'free'"))  # free | pro | max
+    paystack_customer_code = Column(String, nullable=True, index=True)
+    stripe_customer_id = Column(String, nullable=True, index=True)
     video_credits_remaining = Column(Integer, server_default=text("0"))
     video_credits_used_this_month = Column(Integer, server_default=text("0"))
     credits_reset_date = Column(DateTime, nullable=True)

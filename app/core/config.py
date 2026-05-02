@@ -109,6 +109,21 @@ class Settings(BaseSettings):
     OPENAI_TTS_MODEL: str = "tts-1"
     OPENAI_TTS_VOICE: str = "alloy"
 
+    # â”€â”€ Payments (Paystack) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    PAYSTACK_SECRET_KEY: str = ""
+    PAYSTACK_PUBLIC_KEY: str = ""
+    PAYSTACK_PLAN_PRO: str = ""
+    PAYSTACK_PLAN_MAX: str = ""
+    PAYSTACK_CALLBACK_URL: str = ""
+    PAYSTACK_CANCEL_URL: str = ""
+    PAYSTACK_MANAGE_URL: str = ""
+
+    # â”€â”€ Feature Flags / Rollout Controls â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    FEATURE_REAL_VIDEO_PIPELINE: bool = True
+    FEATURE_PAYSTACK_BILLING: bool = True
+    FEATURE_AI_ENHANCER_GUARDRAILS: bool = True
+    ROLLOUT_CANARY_PERCENT: int = 100
+
     class Config:
         env_file = ".env"
         case_sensitive = False
